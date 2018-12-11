@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0
-PROGS := inode
+PROGS := inode block
+CFLAGS ?= -g
 all: $(PROGS)
-	@for i in $(PROGS); do $(CC) -o $$i $${i}.c; done
+	@for i in $(PROGS); do $(CC) $(CFLAGS) -o $$i $${i}.c; done
 .PHONY: clean
 clean:
 	@$(RM) a.out
