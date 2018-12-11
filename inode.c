@@ -18,15 +18,13 @@ static int get_inode(int fd)
 	return buf.st_ino;
 }
 
-static const char *app = "inode";
-
 int main(int argc, const char *argv[])
 {
 	int ret;
 	int fd;
 
 	if (argc < 2) {
-		fprintf(stderr, "usage: %s <filename>\n", app);
+		fprintf(stderr, "usage: %s <filename>\n", argv[0]);
 		return 1;
 	}
 	fd = open(argv[1], O_RDONLY);
