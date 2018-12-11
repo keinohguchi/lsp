@@ -33,12 +33,13 @@ int main(int argc, const char *argv[])
 		return 1;
 	}
 	ret = get_inode(fd);
-	if (ret == -1)
+	if (ret == -1) {
+		fprintf(stderr, "get_inode()\n");
 		goto out;
+	}
 	printf("file=%s,inode=%d\n", argv[1], ret);
 out:
-	ret = close(fd);
-	if (ret == -1)
+	if (close(fd) == -1)
 		perror("close");
 	return ret;
 }
