@@ -22,6 +22,7 @@ static const char *app = "inode";
 
 int main(int argc, const char *argv[])
 {
+	int ret;
 	int fd;
 
 	if (argc < 2) {
@@ -33,7 +34,13 @@ int main(int argc, const char *argv[])
 		perror("open");
 		return 1;
 	}
-	if (close(fd) == -1)
+	ret = get_inode(fd);
+	if (ret == -1)
+		goto out;
+	printf("file=%s,inode=%d\n", argv[1], ret);
+out:
+	ret = close(fd);
+	if (ret == -1)
 		perror("close");
-	return 0;
+	return ret;
 }
