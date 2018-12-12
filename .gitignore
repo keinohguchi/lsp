@@ -2,5 +2,6 @@ cscope.*
 a.out
 inode
 block
+wait
 *.o
 *.~
