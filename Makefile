@@ -2,6 +2,8 @@
 PROGS := inode
 PROGS += block
 PROGS += wait
+PROGS += system
+CC     := gcc
 CFLAGS ?= -g
 all: $(PROGS)
 	@for i in $(PROGS); do $(CC) $(CFLAGS) -o $$i $${i}.c; done

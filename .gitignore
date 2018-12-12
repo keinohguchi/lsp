@@ -3,5 +3,6 @@ a.out
 inode
 block
 wait
+system
 *.o
 *.~
