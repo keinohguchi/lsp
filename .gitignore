@@ -1,5 +1,6 @@
 cscope.*
 a.out
 inode
+block
 *.o
 *.~
