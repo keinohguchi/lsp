@@ -6,6 +6,7 @@
 #include <sys/types.h>
 #include <linux/limits.h>
 
+/* _daemon create a daemonized process and returns its PID */
 int _daemon(void)
 {
 	pid_t pid;
@@ -45,16 +46,26 @@ int _daemon(void)
 		perror("dup2");
 		return -1;
 	}
-	return 0;
+	return pid;
 }
 
 int main(int argc, char *argv[])
 {
-	int ret;
+	pid_t got, want;
 	
-	ret = _daemon();
-	if (ret == -1) {
+	got = _daemon();
+	if (got == -1) {
 		perror("_daemon");
+		return 1;
+	}
+	want = getsid(0);
+	if (want == -1) {
+		perror("getsid");
+		return 1;
+	}
+	if (got != want) {
+		fprintf(stderr, "unexpected session ID:\n- want: %d\n-  got: %d\n",
+			want, got);
 		return 1;
 	}
 	return 0;

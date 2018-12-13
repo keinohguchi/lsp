@@ -4,12 +4,15 @@ PROGS += block
 PROGS += wait
 PROGS += system
 PROGS += daemon
+TESTS := daemon
 SRCS  := $(wildcard *.c)
 CC     := gcc
 CFLAGS ?= -g
 all: $(PROGS)
 $(PROGS): $(SRCS)
 	$(CC) $(CFLAGS) -o $@ $@.c
-.PHONY: clean
+.PHONY: test clean
+test: $(TESTS)
+	@for i in $^; do ./$$i; done
 clean:
 	@$(RM) $(PROGS)
