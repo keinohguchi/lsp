@@ -3,10 +3,11 @@ PROGS := inode
 PROGS += block
 PROGS += wait
 PROGS += system
+SRCS  := $(wildcard *.c)
 CC     := gcc
 CFLAGS ?= -g
 all: $(PROGS)
-$(PROGS):
+$(PROGS): $(SRCS)
 	$(CC) $(CFLAGS) -o $@ $@.c
 .PHONY: clean
 clean:
