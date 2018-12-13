@@ -4,5 +4,6 @@ inode
 block
 wait
 system
+daemon
 *.o
 *.~

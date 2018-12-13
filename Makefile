@@ -3,6 +3,7 @@ PROGS := inode
 PROGS += block
 PROGS += wait
 PROGS += system
+PROGS += daemon
 SRCS  := $(wildcard *.c)
 CC     := gcc
 CFLAGS ?= -g
