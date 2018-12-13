@@ -6,7 +6,8 @@ PROGS += system
 CC     := gcc
 CFLAGS ?= -g
 all: $(PROGS)
-	@for i in $(PROGS); do $(CC) $(CFLAGS) -o $$i $${i}.c; done
+$(PROGS):
+	$(CC) $(CFLAGS) -o $@ $@.c
 .PHONY: clean
 clean:
 	@$(RM) $(PROGS)
