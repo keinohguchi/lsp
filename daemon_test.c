@@ -8,7 +8,7 @@ extern pid_t _daemon(void);
 int main(void)
 {
 	pid_t got, want;
-	
+
 	got = _daemon();
 	if (got == -1) {
 		perror("_daemon");

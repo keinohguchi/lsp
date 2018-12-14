@@ -17,9 +17,10 @@ $(PROGS): $(SRCS) $(MAIN_SRCS)
 .PHONY: test clean
 test: $(TESTS)
 $(TESTS): $(SRCS) $(TEST_SRCS)
+	@printf "$@:\t"
 	@if [ -f $@.c ]; then \
-		$(CC) $(CFLAGS) -o $@ $(patsubst %_test.c,%.c,$@.c) $@.c; \
-		printf "$@:\t"; if ./$@; then echo PASS; else echo FAIL; fi \
-	else printf "$@:\tN/A\n"; fi
+		$(CC) $(CFLAGS) -o $@ $(patsubst %_test.c,%.c,$@.c) $@.c;    \
+		if ./$@; then echo PASS && true; else echo FAIL && false; fi \
+	else echo "N/A"; fi
 clean:
 	@$(RM) $(PROGS) $(TESTS)
