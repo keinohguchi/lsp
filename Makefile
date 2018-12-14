@@ -4,9 +4,9 @@ PROGS += block
 PROGS += wait
 PROGS += system
 PROGS += daemon
-TESTS := daemon_test
-SRCS      := $(filter-out %_test.c %_main.c,$(wildcard *.c))
-OBJS      := $(patsubst %.c,%.o,$(SRCS))
+TESTS := $(patsubst %,%_test,$(PROGS))
+SRCS  := $(filter-out %_test.c %_main.c,$(wildcard *.c))
+OBJS  := $(patsubst %.c,%.o,$(SRCS))
 MAIN_SRCS := $(filter %_main.c,$(wildcard *.c))
 TEST_SRCS := $(filter %_test.c,$(wildcard *.c))
 CC     := gcc
@@ -17,7 +17,9 @@ $(PROGS): $(SRCS) $(MAIN_SRCS)
 .PHONY: test clean
 test: $(TESTS)
 $(TESTS): $(SRCS) $(TEST_SRCS)
-	@$(CC) $(CFLAGS) -o $@ $(patsubst %_test.c,%.c,$@.c) $@.c
-	@echo -n "$@: "; if ./$@; then echo PASS; else echo FAIL; fi
+	@if [ -f $@.c ]; then \
+		$(CC) $(CFLAGS) -o $@ $(patsubst %_test.c,%.c,$@.c) $@.c; \
+		printf "$@:\t"; if ./$@; then echo PASS; else echo FAIL; fi \
+	else printf "$@:\tN/A\n"; fi
 clean:
 	@$(RM) $(PROGS) $(TESTS)
