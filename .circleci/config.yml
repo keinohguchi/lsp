@@ -19,10 +19,8 @@ jobs:
   checkout:
     <<: *defaults
     steps:
-      # https://research.swtch.com/vgo-tour
       - checkout
       - persist_to_workspace:
-          # https://circleci.com/docs/2.0/workflows/#using-workspaces-to-share-data-among-jobs
           root: /home/circleci/project/lsp
           paths:
             - .
