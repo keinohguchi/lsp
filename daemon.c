@@ -6,8 +6,8 @@
 #include <sys/types.h>
 #include <linux/limits.h>
 
-/* _daemon create a daemonized process and returns its PID */
-int _daemon(void)
+/* xdaemon create a daemonized process and returns its PID */
+int xdaemon(void)
 {
 	pid_t pid;
 	int i;
@@ -48,4 +48,3 @@ int _daemon(void)
 	}
 	return pid;
 }
-

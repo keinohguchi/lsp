@@ -3,13 +3,15 @@
 #include <unistd.h>
 #include <sys/types.h>
 
-extern pid_t _daemon(void);
+extern pid_t xdaemon(void);
 
 int main(void)
 {
 	pid_t got, want;
 
-	got = _daemon();
+	/* note that the following return value is not passed back
+	 * to the calling process, as it's already daemonized. */
+	got = xdaemon();
 	if (got == -1) {
 		perror("_daemon");
 		return 1;
