@@ -5,30 +5,24 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-int main(int argc, char *argv[])
+/* let child send signum, if it's non zero and put the
+ * result in status */
+int _wait(int ret, int *status)
 {
-	int status;
+	int status1;
 	pid_t pid;
 
-	if (!fork()) {
-		if (argc > 1) {
-			int ret = atoi(argv[1]);
-			return ret;
-		}
+	pid = fork();
+	if (pid == -1) {
+		perror("fork");
+		return -1;
+	}
+	if (!pid) {
+		/* child */
+		if (ret)
+			exit(ret);
 		abort();
 	}
-
-	pid = wait(&status);
-	if (pid == -1) {
-		perror("wait");
-		return 1;
-	}
-	if (WIFEXITED(status))
-		printf("Normal exit with exit status=%d\n",
-		       WEXITSTATUS(status));
-	if (WIFSIGNALED(status))
-		printf("Signal received with signal=%d%s\n",
-		       WTERMSIG(status),
-		       WCOREDUMP(status) ? "(core dumped)" : "");
-	return 0;
+	/* parent */
+	return wait(status);
 }

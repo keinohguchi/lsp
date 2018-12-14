@@ -1,9 +1,9 @@
-cscope.*
-a.out
 inode
 block
 wait
 system
 daemon
+daemon_test
 *.o
 *.~
+cscope.*
