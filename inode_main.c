@@ -4,10 +4,9 @@
 #include <unistd.h>
 #include <sys/types.h>
 
-extern int inode(int fd);
-
 int main(int argc, const char *argv[])
 {
+	extern int get_inode(int fd);
 	int ret;
 	int fd;
 
@@ -20,7 +19,7 @@ int main(int argc, const char *argv[])
 		perror("open");
 		return 1;
 	}
-	ret = inode(fd);
+	ret = get_inode(fd);
 	if (ret == -1) {
 		fprintf(stderr, "inode()\n");
 		goto out;

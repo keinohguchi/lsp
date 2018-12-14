@@ -2,10 +2,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-extern int _system(char *const argv[]);
-
 int main(int argc, char *argv[])
 {
+	extern int xsystem(char *const argv[]);
 	char **args;
 	int ret;
 	int i;
@@ -26,7 +25,7 @@ int main(int argc, char *argv[])
 	for (i = 0; i < argc-1; i++)
 		args[i+2] = argv[i+1];
 	args[i+2] = NULL;
-	ret = _system(args);
+	ret = xsystem(args);
 out:
 	free(args);
 	return ret;

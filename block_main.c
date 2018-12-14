@@ -4,11 +4,10 @@
 #include <unistd.h>
 #include <sys/types.h>
 
-extern int get_nr_blocks(int fd);
-extern int get_phy_block(int fd, int logical_block);
-
 int main(int argc, char *argv[])
 {
+	extern int get_phy_block(int fd, int logical_block);
+	extern int get_nr_blocks(int fd);
 	const char *path;
 	int ret;
 	int fd;

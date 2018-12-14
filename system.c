@@ -5,7 +5,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-int _system(char *const argv[])
+int xsystem(char *const argv[])
 {
 	int status;
 	pid_t pid;

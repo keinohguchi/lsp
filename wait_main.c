@@ -4,10 +4,9 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-extern pid_t _wait(int ret, int *status);
-
 int main(int argc, char *argv[])
 {
+	extern pid_t xwait(int ret, int *status);
 	int ret = 0;
 	int status;
 	pid_t pid;
@@ -15,7 +14,7 @@ int main(int argc, char *argv[])
 	if (argc > 1)
 		ret = atoi(argv[1]);
 
-	pid = _wait(ret, &status);
+	pid = xwait(ret, &status);
 	if (pid == -1)
 		return 1;
 

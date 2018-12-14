@@ -7,7 +7,7 @@
 
 /* let child send signum, if it's non zero and put the
  * result in status */
-int _wait(int ret, int *status)
+int xwait(int ret, int *status)
 {
 	int status1;
 	pid_t pid;

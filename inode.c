@@ -3,7 +3,7 @@
 #include <sys/stat.h>
 
 /* get inode number for the open file */
-int inode(int fd)
+int get_inode(int fd)
 {
 	struct stat buf;
 	int ret;
