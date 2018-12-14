@@ -4,7 +4,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 
-extern int get_inode(int fd);
+extern int inode(int fd);
 
 int main(int argc, const char *argv[])
 {
@@ -20,9 +20,9 @@ int main(int argc, const char *argv[])
 		perror("open");
 		return 1;
 	}
-	ret = get_inode(fd);
+	ret = inode(fd);
 	if (ret == -1) {
-		fprintf(stderr, "get_inode()\n");
+		fprintf(stderr, "inode()\n");
 		goto out;
 	}
 	printf("file=%s,inode=%d\n", argv[1], ret);
