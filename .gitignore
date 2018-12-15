@@ -3,7 +3,8 @@ block
 wait
 system
 daemon
-daemon_test
+affinity
+*_test
 *.o
 *.~
 cscope.*

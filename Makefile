@@ -4,6 +4,7 @@ PROGS += block
 PROGS += wait
 PROGS += system
 PROGS += daemon
+PROGS += affinity
 TESTS := $(patsubst %,%_test,$(PROGS))
 SRCS  := $(filter-out %_test.c %_main.c,$(wildcard *.c))
 OBJS  := $(patsubst %.c,%.o,$(SRCS))
@@ -14,7 +15,9 @@ CFLAGS ?= -g
 all: $(PROGS)
 $(PROGS): $(SRCS) $(MAIN_SRCS)
 	$(CC) $(CFLAGS) -o $@ $@.c $@_main.c
-.PHONY: test clean
+.PHONY: run test clean
+run: $(PROGS)
+	@for i in $(PROGS); do if ! ./$$i; then exit 1; fi; done
 test: $(TESTS)
 $(TESTS): $(SRCS) $(TEST_SRCS)
 	@printf "$@:\t"

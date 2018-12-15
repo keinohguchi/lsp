@@ -12,7 +12,7 @@ int main(int argc, const char *argv[])
 
 	if (argc < 2) {
 		fprintf(stderr, "usage: %s <filename>\n", argv[0]);
-		return 1;
+		return 0;
 	}
 	fd = open(argv[1], O_RDONLY);
 	if (fd == -1) {
@@ -28,5 +28,5 @@ int main(int argc, const char *argv[])
 out:
 	if (close(fd) == -1)
 		perror("close");
-	return ret;
+	return 0;
 }
