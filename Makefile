@@ -5,6 +5,7 @@ PROGS += wait
 PROGS += system
 PROGS += daemon
 PROGS += affinity
+PROGS += resource
 TESTS := $(patsubst %,%_test,$(PROGS))
 SRCS  := $(filter-out %_test.c %_main.c,$(wildcard *.c))
 OBJS  := $(patsubst %.c,%.o,$(SRCS))

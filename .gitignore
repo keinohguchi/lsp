@@ -4,6 +4,7 @@ wait
 system
 daemon
 affinity
+resource
 *_test
 *.o
 *.~
