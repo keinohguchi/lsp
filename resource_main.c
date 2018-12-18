@@ -7,7 +7,7 @@
 
 static void usage(const char *app)
 {
-	printf("usage: %s [cpu|core|data] (soft limit)\n", app);
+	printf("usage: %s [cpu|core|data|file|open] (soft limit)\n", app);
 	exit(EXIT_SUCCESS);
 }
 
@@ -28,6 +28,10 @@ int main(int argc, char *argv[])
 		resource = RLIMIT_CORE;
 	else if (!strcmp(argv[1], "data"))
 		resource = RLIMIT_DATA;
+	else if (!strcmp(argv[1], "file"))
+		resource = RLIMIT_FSIZE;
+	else if (!strcmp(argv[1], "open"))
+		resource = RLIMIT_NOFILE;
 	else
 		usage(argv[0]);
 
