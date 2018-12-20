@@ -48,6 +48,7 @@ int main(void)
 				ret = 1;
 				fprintf(stderr, "%s: cannot withdraw ammount: %u\n",
 					t->name, t->withdraw_amount);
+				goto out;
 			}
 		}
 		got = balance(a);
@@ -56,6 +57,7 @@ int main(void)
 			fprintf(stderr, "%s: unexpected result:\n- want: %ld\n-  got: %ld\n",
 				t->name, t->want, got);
 		}
+out:
 		close_account(a);
 		if (ret)
 			return ret;
