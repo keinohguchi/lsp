@@ -5,6 +5,7 @@ system
 daemon
 affinity
 resource
+thread
 *_test
 *.o
 *.~

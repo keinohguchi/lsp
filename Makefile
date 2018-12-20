@@ -6,13 +6,14 @@ PROGS += system
 PROGS += daemon
 PROGS += affinity
 PROGS += resource
+PROGS += thread
 TESTS := $(patsubst %,%_test,$(PROGS))
 SRCS  := $(filter-out %_test.c %_main.c,$(wildcard *.c))
 OBJS  := $(patsubst %.c,%.o,$(SRCS))
 MAIN_SRCS := $(filter %_main.c,$(wildcard *.c))
 TEST_SRCS := $(filter %_test.c,$(wildcard *.c))
 CC     := gcc
-CFLAGS ?= -Wall -Werror -g
+CFLAGS ?= -Wall -Werror -g -lpthread
 all: $(PROGS)
 $(PROGS): $(OBJS) $(MAIN_SRCS)
 	$(CC) $(CFLAGS) -o $@ $@.o $@_main.c
