@@ -11,7 +11,8 @@ int main(int argc, char *argv[])
 	unsigned int deposit = 1000;
 	unsigned int amount = 100;
 	struct account *account;
-	long int ret;
+	long int current_balance;
+	int ret;
 
 	if (argc > 1) {
 		long int val;
@@ -40,14 +41,15 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "cannot open account\n");
 		return 1;
 	}
-	ret = withdraw(account, amount);
-	if (ret == -1) {
+	ret = 0;
+	current_balance = withdraw(account, amount);
+	if (current_balance == -1) {
 		ret = 1;
 		fprintf(stderr, "cannot withdraw amount(%u), current balance(%ld)\n",
 			amount, balance(account));
 		goto out;
 	}
-	printf("withdraw=%u,balance=%ld\n", amount, ret);
+	printf("withdraw=%u,balance=%ld\n", amount, current_balance);
 out:
 	close_account(account);
 	return ret;
