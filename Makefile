@@ -14,17 +14,17 @@ TEST_SRCS := $(filter %_test.c,$(wildcard *.c))
 CC     := gcc
 CFLAGS ?= -Wall -Werror -g
 all: $(PROGS)
-$(PROGS): $(SRCS) $(MAIN_SRCS)
-	$(CC) $(CFLAGS) -o $@ $@.c $@_main.c
+$(PROGS): $(OBJS) $(MAIN_SRCS)
+	$(CC) $(CFLAGS) -o $@ $@.o $@_main.c
 .PHONY: run test clean
 run: $(PROGS)
 	@for i in $(PROGS); do if ! ./$$i; then exit 1; fi; done
 test: $(TESTS)
-$(TESTS): $(SRCS) $(TEST_SRCS)
+$(TESTS): $(OBJS) $(TEST_SRCS)
 	@printf "$@:\t"
 	@if [ -f $@.c ]; then \
-		$(CC) $(CFLAGS) -o $@ $(patsubst %_test.c,%.c,$@.c) $@.c;    \
+		$(CC) $(CFLAGS) -o $@ $(patsubst %_test.c,%.o,$@.c) $@.c;    \
 		if ./$@; then echo PASS && true; else echo FAIL && false; fi \
 	else echo "N/A"; fi
 clean:
-	@$(RM) $(PROGS) $(TESTS)
+	@$(RM) $(PROGS) $(OBJS) $(TESTS)
