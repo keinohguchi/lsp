@@ -9,7 +9,6 @@
  * result in status */
 int xwait(int ret, int *status)
 {
-	int status1;
 	pid_t pid;
 
 	pid = fork();

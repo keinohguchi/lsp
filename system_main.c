@@ -26,7 +26,6 @@ int main(int argc, char *argv[])
 		args[i+2] = argv[i+1];
 	args[i+2] = NULL;
 	ret = xsystem(args);
-out:
 	free(args);
 	return ret;
 }

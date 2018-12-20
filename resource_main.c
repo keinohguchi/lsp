@@ -54,7 +54,7 @@ int main(int argc, char *argv[])
 		perror("getrlimit");
 		return 1;
 	}
-	printf("%s has soft=%d,hard=%d limit\n",
+	printf("%s has soft=%ld,hard=%ld limit\n",
 	       argv[1], rlim.rlim_cur, rlim.rlim_max);
 	return 0;
 }

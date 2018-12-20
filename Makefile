@@ -12,7 +12,7 @@ OBJS  := $(patsubst %.c,%.o,$(SRCS))
 MAIN_SRCS := $(filter %_main.c,$(wildcard *.c))
 TEST_SRCS := $(filter %_test.c,$(wildcard *.c))
 CC     := gcc
-CFLAGS ?= -g
+CFLAGS ?= -Wall -Werror -g
 all: $(PROGS)
 $(PROGS): $(SRCS) $(MAIN_SRCS)
 	$(CC) $(CFLAGS) -o $@ $@.c $@_main.c

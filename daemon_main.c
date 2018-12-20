@@ -6,7 +6,8 @@
 
 extern pid_t xdaemon(void);
 
-void main(void)
+int main(void)
 {
 	xdaemon();
+	return 0;
 }
