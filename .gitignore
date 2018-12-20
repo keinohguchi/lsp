@@ -6,6 +6,7 @@ daemon
 affinity
 resource
 thread
+withdraw
 *_test
 *.o
 *.~
