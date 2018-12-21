@@ -6,12 +6,34 @@
 
 #include "withdraw.h"
 
+struct withdraw_arg {
+	pthread_t	tid;
+	struct account	*account;
+	unsigned int	amount;
+	long int	balance;
+};
+
+static void *withdraw_thread(void *arg)
+{
+	struct withdraw_arg *a = (struct withdraw_arg *)arg;
+	pthread_t me = pthread_self();
+	if (!pthread_equal(me, a->tid)) {
+		fprintf(stderr, "wrong thread\n");
+		return a;
+	}
+	a->balance = withdraw(a->account, a->amount);
+	if (a->balance == -1)
+		fprintf(stderr, "cannot withdraw\n");
+	return a;
+}
+
 int main(int argc, char *argv[])
 {
+	struct withdraw_arg *args = NULL;
+	struct withdraw_arg *arg;
+	struct account *account = NULL;
 	unsigned int deposit = 1000;
 	unsigned int amount = 100;
-	struct account *account;
-	long int current_balance;
 	int ret;
 
 	if (argc > 1) {
@@ -36,21 +58,39 @@ int main(int argc, char *argv[])
 		}
 		deposit = val;
 	}
+	ret = 1;
+	args = calloc(1, sizeof(struct withdraw_arg));
+	if (!args) {
+		perror("calloc");
+		goto out;
+	}
 	account = open_account(deposit);
 	if (!account) {
 		fprintf(stderr, "cannot open account\n");
-		return 1;
-	}
-	ret = 0;
-	current_balance = withdraw(account, amount);
-	if (current_balance == -1) {
-		ret = 1;
-		fprintf(stderr, "cannot withdraw amount(%u), current balance(%ld)\n",
-			amount, balance(account));
 		goto out;
 	}
-	printf("withdraw=%u,balance=%ld\n", amount, current_balance);
+	arg = &args[0];
+	arg->account = account;
+	arg->amount = amount;
+	ret = pthread_create(&arg->tid, NULL, withdraw_thread, arg);
+	if (ret) {
+		errno = ret;
+		perror("pthread_create");
+		ret = 1;
+		goto out;
+	}
+	ret = pthread_join(arg->tid, NULL);
+	if (ret) {
+		errno = ret;
+		perror("pthread_join");
+		ret = 1;
+		goto out;
+	}
+	printf("balance=%ld\n", balance(account));
 out:
-	close_account(account);
+	if (account)
+		close_account(account);
+	if (args)
+		free(args);
 	return ret;
 }
