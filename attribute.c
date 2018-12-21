@@ -41,7 +41,10 @@ char *getattr(const char *path, const char *key, size_t *len)
 		perror("malloc");
 		return NULL;
 	}
-	sprintf(buf, "user.%s", key);
+	if (sprintf(buf, "user.%s", key) < 0) {
+		perror("sprintf");
+		goto error;
+	}
 	ret = getxattr(path, buf, NULL, 0);
 	if (ret == -1) {
 		perror("getxattr");
@@ -70,16 +73,46 @@ error:
 int setattr(const char *path, const char *key, const void *val, size_t len)
 {
 	char *buf;
+	int ret;
 
 	buf = malloc(strlen(key)+6);
 	if (!buf) {
 		perror("malloc");
 		return -1;
 	}
-	sprintf(buf, "user.%s", key);
-	int ret = setxattr(path, buf, val, len, 0);
+	ret = -1;
+	if (sprintf(buf, "user.%s", key) < 0) {
+		perror("sprintf");
+		goto out;
+	}
+	ret = setxattr(path, buf, val, len, 0);
 	if (ret == -1) {
 		perror("setxattr");
+		goto out;
+	}
+out:
+	free(buf);
+	return ret;
+}
+
+int rmattr(const char *path, const char *key)
+{
+	char *buf;
+	int ret;
+
+	buf = malloc(strlen(key)+6);
+	if (!buf) {
+		perror("malloc");
+		return -1;
+	}
+	ret = -1;
+	if (sprintf(buf, "user.%s", key) < 0) {
+		perror("sprintf");
+		goto out;
+	}
+	ret = removexattr(path, buf);
+	if (ret == -1) {
+		perror("removexattr");
 		goto out;
 	}
 out:

@@ -6,11 +6,12 @@
 extern char *listattr(const char *path, size_t *len);
 extern char *getattr(const char *path, const char *key, size_t *len);
 extern int setattr(const char *path, const char *key, const char *val, size_t len);
+extern int rmattr(const char *path, const char *key);
 
 static void usage(const char *app)
 {
 	fprintf(stderr,
-		"usage: %s <file> [list|get|set] [key [value]]\n",
+		"usage: %s <file> [ls|get|set|rm] [key [value]]\n",
 		app);
 	exit(EXIT_SUCCESS);
 }
@@ -59,6 +60,16 @@ static int set(const char *path, const char *key, const char *val)
 	return 0;
 }
 
+static int rm(const char *path, const char *key)
+{
+	int ret;
+
+	ret = rmattr(path, key);
+	if (ret == -1)
+		return 1;
+	return 0;
+}
+
 int main(int argc, char *argv[])
 {
 	const char *path, *cmd;
@@ -68,7 +79,7 @@ int main(int argc, char *argv[])
 		usage(argv[0]);
 	path = argv[1];
 	cmd = argv[2];
-	if (!strncmp(cmd, "list", strlen(cmd)))
+	if (!strncmp(cmd, "ls", strlen(cmd)))
 		ret = list(path);
 	else if (!strncmp(cmd, "get", strlen(cmd))) {
 		if (argc < 4)
@@ -78,6 +89,10 @@ int main(int argc, char *argv[])
 		if (argc < 5)
 			usage(argv[0]);
 		ret = set(path, argv[3], argv[4]);
+	} else if (!strncmp(cmd, "rm", strlen(cmd))) {
+		if (argc < 4)
+			usage(argv[0]);
+		ret = rm(path, argv[3]);
 	} else
 		usage(argv[0]);
 
