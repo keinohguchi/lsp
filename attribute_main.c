@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-extern char *listattr(const char *path, size_t *len);
+extern char *lsattr(const char *path, size_t *len);
 extern char *getattr(const char *path, const char *key, size_t *len);
 extern int setattr(const char *path, const char *key, const char *val, size_t len);
 extern int rmattr(const char *path, const char *key);
@@ -16,13 +16,13 @@ static void usage(const char *app)
 	exit(EXIT_SUCCESS);
 }
 
-static int list(const char *path)
+static int ls(const char *path)
 {
 	char *attrs, *ptr, *endp;
 	size_t len;
 	int ret = 0;
 
-	attrs = listattr(path, &len);
+	attrs = lsattr(path, &len);
 	if (!attrs)
 		return 1;
 	ret = 1;
@@ -80,7 +80,7 @@ int main(int argc, char *argv[])
 	path = argv[1];
 	cmd = argv[2];
 	if (!strncmp(cmd, "ls", strlen(cmd)))
-		ret = list(path);
+		ret = ls(path);
 	else if (!strncmp(cmd, "get", strlen(cmd))) {
 		if (argc < 4)
 			usage(argv[0]);

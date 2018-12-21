@@ -5,7 +5,7 @@
 #include <sys/types.h>
 #include <sys/xattr.h>
 
-char *listattr(const char *path, size_t *len)
+char *lsattr(const char *path, size_t *len)
 {
 	ssize_t ret;
 	char *buf;
