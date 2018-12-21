@@ -27,7 +27,7 @@ $(TESTS): $(OBJS) $(TEST_SRCS)
 	@printf "$@:\t"
 	@if [ -f $@.c ]; then \
 		$(CC) $(CFLAGS) -o $@ $(patsubst %_test.c,%.o,$@.c) $@.c;    \
-		if ./$@; then echo PASS && true; else echo FAIL && false; fi \
+		if ./$@; then echo PASS; else echo FAIL; fi \
 	else echo "N/A"; fi
 clean:
 	@$(RM) $(PROGS) $(OBJS) $(TESTS)
