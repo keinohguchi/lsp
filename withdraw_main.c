@@ -34,7 +34,8 @@ int main(int argc, char *argv[])
 	struct account *account = NULL;
 	unsigned int deposit = 1000;
 	unsigned int amount = 100;
-	int ret;
+	long int nr = 1;
+	int ret, i;
 
 	if (argc > 1) {
 		long int val;
@@ -58,8 +59,19 @@ int main(int argc, char *argv[])
 		}
 		deposit = val;
 	}
+	if (argc > 3) {
+		long int val;
+
+		errno = 0;
+		val = strtol(argv[3], NULL, 10);
+		if (errno) {
+			perror("strtol");
+			return 1;
+		}
+		nr = val;
+	}
 	ret = 1;
-	args = calloc(1, sizeof(struct withdraw_arg));
+	args = calloc(nr, sizeof(struct withdraw_arg));
 	if (!args) {
 		perror("calloc");
 		goto out;
@@ -69,22 +81,29 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "cannot open account\n");
 		goto out;
 	}
-	arg = &args[0];
-	arg->account = account;
-	arg->amount = amount;
-	ret = pthread_create(&arg->tid, NULL, withdraw_thread, arg);
-	if (ret) {
-		errno = ret;
-		perror("pthread_create");
-		ret = 1;
-		goto out;
+	for (i = 0; i < nr; i++) {
+		arg = &args[i];
+		arg->account = account;
+		arg->amount = amount;
+		ret = pthread_create(&arg->tid, NULL, withdraw_thread, arg);
+		if (ret) {
+			errno = ret;
+			perror("pthread_create");
+			nr = i;
+			ret = 1;
+			goto join;
+		}
 	}
-	ret = pthread_join(arg->tid, NULL);
-	if (ret) {
-		errno = ret;
-		perror("pthread_join");
-		ret = 1;
-		goto out;
+join:
+	for (i = 0; i < nr; i++) {
+		arg = &args[i];
+		ret = pthread_join(arg->tid, NULL);
+		if (ret) {
+			errno = ret;
+			perror("pthread_join");
+			ret = 1;
+			continue;
+		}
 	}
 	printf("balance=%ld\n", balance(account));
 out:
