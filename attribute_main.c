@@ -3,6 +3,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+extern char *listattr(const char *path, size_t *len);
+extern char *getattr(const char *path, const char *key, size_t *len);
+extern int setattr(const char *path, const char *key, const char *val, size_t len);
+
 static void usage(const char *app)
 {
 	fprintf(stderr,
@@ -13,16 +17,45 @@ static void usage(const char *app)
 
 static int list(const char *path)
 {
-	return 0;
+	char *attrs, *ptr, *endp;
+	size_t len;
+	int ret = 0;
+
+	attrs = listattr(path, &len);
+	if (!attrs)
+		return 1;
+	ret = 1;
+	for (ptr = attrs, endp = ptr+len; ptr < endp; ptr += len) {
+		len = printf("%s\n", ptr);
+		if (len < 0) {
+			perror("printf");
+			break;
+		}
+	}
+	free(attrs);
+	return ret;
 }
 
 static int get(const char *path, const char *key)
 {
+	size_t len;
+	char *val;
+
+	val = getattr(path, key, &len);
+	if (!val)
+		return 1;
+	printf("%s=%s\n", key, val);
+	free(val);
 	return 0;
 }
 
 static int set(const char *path, const char *key, const char *val)
 {
+	int ret;
+
+	ret = setattr(path, key, val, strlen(val)+1);
+	if (ret == -1)
+		return 1;
 	return 0;
 }
 
