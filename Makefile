@@ -8,6 +8,7 @@ PROGS += affinity
 PROGS += resource
 PROGS += thread
 PROGS += withdraw
+PROGS += attribute
 TESTS := $(patsubst %,%_test,$(PROGS))
 SRCS  := $(filter-out %_test.c %_main.c,$(wildcard *.c))
 OBJS  := $(patsubst %.c,%.o,$(SRCS))
