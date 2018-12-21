@@ -11,7 +11,7 @@ extern int rmattr(const char *path, const char *key);
 static void usage(const char *app)
 {
 	fprintf(stderr,
-		"usage: %s <file> [ls|get|set|rm] [key [value]]\n",
+		"usage: %s [ls|get|set|rm] <file> [<key> [<value>]]\n",
 		app);
 	exit(EXIT_SUCCESS);
 }
@@ -77,8 +77,8 @@ int main(int argc, char *argv[])
 
 	if (argc < 3)
 		usage(argv[0]);
-	path = argv[1];
-	cmd = argv[2];
+	cmd = argv[1];
+	path = argv[2];
 	if (!strncmp(cmd, "ls", strlen(cmd)))
 		ret = ls(path);
 	else if (!strncmp(cmd, "get", strlen(cmd))) {
