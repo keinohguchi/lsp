@@ -18,7 +18,7 @@ CFLAGS ?= -Wall -Werror -g -lpthread
 all: $(PROGS)
 $(PROGS): $(OBJS) $(MAIN_SRCS)
 	$(CC) $(CFLAGS) -o $@ $@.o $@_main.c
-.PHONY: run test clean
+.PHONY: run test $(TESTS) clean
 run: $(PROGS)
 	@for i in $(PROGS); do if ! ./$$i; then exit 1; fi; done
 test: $(TESTS)
