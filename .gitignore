@@ -8,6 +8,7 @@ resource
 thread
 withdraw
 attribute
+mstat
 *_test
 *.o
 *.~
