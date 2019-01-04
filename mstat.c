@@ -4,7 +4,9 @@
 
 int main(int argc, char *argv[])
 {
-	size_t page = getpagesize();
+	size_t page;
+	malloc_stats();
+	page = getpagesize();
 	printf("pagesize=%ld\n", page);
 	malloc_stats();
 	return 0;
