@@ -5,7 +5,8 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-int xsystem(char *const argv[])
+/* my own system command */
+static int xsystem(char *const argv[])
 {
 	int status;
 	pid_t pid;
@@ -30,4 +31,31 @@ int xsystem(char *const argv[])
 		return WEXITSTATUS(status);
 	else
 		return -1;
+}
+
+int main(int argc, char *argv[])
+{
+	char **args;
+	int ret;
+	int i;
+
+	if (argc < 2) {
+		printf("usage: %s <command>\n", argv[0]);
+		exit(EXIT_SUCCESS);
+	}
+	/* allocate memory for the new command */
+	args = calloc((argc+2), sizeof(char *));
+	if (!args) {
+		perror("calloc");
+		exit(EXIT_FAILURE);
+	}
+	/* for execv(2) */
+	args[0] = "sh";
+	args[1] = "-c";
+	for (i = 0; i < argc-1; i++)
+		args[i+2] = argv[i+1];
+	args[i+2] = NULL;
+	ret = xsystem(args);
+	free(args);
+	return ret;
 }

@@ -5,29 +5,30 @@ PROGS += wait
 PROGS += system
 PROGS += daemon
 PROGS += affinity
-PROGS += resource
-PROGS += thread
-PROGS += withdraw
-PROGS += attribute
+#PROGS += resource
+#PROGS += thread
+#PROGS += withdraw
+#PROGS += attribute
 TESTS := $(patsubst %,%_test,$(PROGS))
-SRCS  := $(filter-out %_test.c %_main.c,$(wildcard *.c))
-OBJS  := $(patsubst %.c,%.o,$(SRCS))
-MAIN_SRCS := $(filter %_main.c,$(wildcard *.c))
 TEST_SRCS := $(filter %_test.c,$(wildcard *.c))
-CC     := gcc
-CFLAGS ?= -Wall -Werror -g -lpthread
+CC     ?= gcc
+CFLAGS += -Wall
+CFLAGS += -Werror
+CFLAGS += -g
+CFLAGS += -lpthread
+CFLAGS += -D_GNU_SOURCE
+.PHONY: all run test check clean $(TESTS)
 all: $(PROGS)
-$(PROGS): $(OBJS) $(MAIN_SRCS)
-	$(CC) $(CFLAGS) -o $@ $@.o $@_main.c
-.PHONY: run test $(TESTS) clean
 run: $(PROGS)
-	@for i in $(PROGS); do if ! ./$$i; then exit 1; fi; done
-test: $(TESTS)
-$(TESTS): $(OBJS) $(TEST_SRCS)
+	@for i in $^; do if ! ./$$i; then exit 1; fi; done
+test check: $(TESTS)
+clean:
+	@$(RM) $(PROGS) $(TESTS)
+%: %.c
+	$(CC) $(CFLAGS) -o $@ $<
+$(TESTS): $(PROGS) $(TEST_SRCS)
 	@printf "$@:\t"
 	@if [ -f $@.c ]; then \
-		$(CC) $(CFLAGS) -o $@ $(patsubst %_test.c,%.o,$@.c) $@.c;    \
+		$(CC) $(CFLAGS) -o $@ $@.c;    \
 		if ./$@; then echo PASS; else echo FAIL; fi \
 	else echo "N/A"; fi
-clean:
-	@$(RM) $(PROGS) $(OBJS) $(TESTS)

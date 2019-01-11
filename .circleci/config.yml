@@ -15,9 +15,9 @@ workflows:
       - run:
           requires:
             - checkout
-      - test:
-          requires:
-            - checkout
+#      - test:
+#          requires:
+#            - checkout
 jobs:
   checkout:
     <<: *defaults

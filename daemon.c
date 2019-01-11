@@ -6,8 +6,7 @@
 #include <sys/types.h>
 #include <linux/limits.h>
 
-/* xdaemon create a daemonized process and returns its PID */
-int xdaemon(void)
+int main(void)
 {
 	pid_t pid;
 	int i;
@@ -17,6 +16,7 @@ int xdaemon(void)
 		perror("fork");
 		return -1;
 	} else if (pid)
+		/* let parent exit to become daemon */
 		exit(EXIT_SUCCESS);
 
 	/* make it session leader/process group leader */
@@ -46,5 +46,7 @@ int xdaemon(void)
 		perror("dup2");
 		return -1;
 	}
-	return pid;
+	for (;;)
+		if (pause() == -1)
+			perror("pause");
 }
