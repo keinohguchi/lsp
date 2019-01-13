@@ -9,6 +9,7 @@ PROGS += affinity
 #PROGS += thread
 #PROGS += withdraw
 #PROGS += attribute
+PROGS += resolution
 TESTS := $(patsubst %,%_test,$(PROGS))
 TEST_SRCS := $(filter %_test.c,$(wildcard *.c))
 CC     ?= gcc
