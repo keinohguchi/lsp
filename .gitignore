@@ -10,6 +10,7 @@ thread
 withdraw
 attribute
 mstat
+resolution
 *_test
 *.o
 *.~
