@@ -10,50 +10,24 @@
 
 const char *progname;
 
-static void usage(FILE *stream, int status)
+static void usage(FILE *stream, int status, const char *const opts)
 {
-	fprintf(stream, "Usage: %s [-hv]\n", progname);
+	fprintf(stream, "Usage: %s [-%s]\n", progname, opts);
 	exit(status);
-}
-
-static void handler(int signo, siginfo_t *info, void *ctx)
-{
-	if (signo != SIGUSR1) {
-		printf("oops\n");
-		exit(EXIT_FAILURE);
-	}
-	printf("exiting...\n");
-	exit(EXIT_SUCCESS);
 }
 
 static int xdaemon(pid_t ppid)
 {
-	union sigval val;
 	pid_t pid;
-	int i, ret;
+	int i;
 
 	pid = fork();
 	if (pid == -1) {
 		perror("fork");
 		return -1;
-	} else if (pid) {
-		const struct sigaction act = {
-			.sa_sigaction	= handler,
-			.sa_flags	= SA_SIGINFO,
-		};
-
-		/* prepare to receive the daemon PID */
-		ret = sigaction(SIGUSR1, &act, NULL);
-		if (ret == -1)
-			perror("sigaction");
-
-		/* wait for the signal from the child and exit */
-		ret = pause();
-		if (ret == -1)
-			perror("pause");
-		/* no way */
-		exit(EXIT_FAILURE);
-	}
+	} else if (pid)
+		/* let parent die to become daemon */
+		exit(EXIT_SUCCESS);
 
 	/* make it session leader/process group leader */
 	if (setsid() == -1) {
@@ -82,47 +56,51 @@ static int xdaemon(pid_t ppid)
 		perror("dup2");
 		return -1;
 	}
-	/* send signal to the parent for the daemonization */
-	val.sival_int = getpid();
-	ret = sigqueue(ppid, SIGUSR1, val);
-	if (ret == -1) {
-		perror("sigqueue");
-		return -1;
-	}
 	return 0;
 }
 
 int main(int argc, char *const argv[])
 {
-	const char *const opts = "hv";
-	bool verbose = false;
-	int ret, i;
+	const char *const opts = "hp";
+	pid_t pid = 0;
+	int ret;
 
 	progname = argv[0];
 	while ((ret = getopt(argc, argv, opts)) != -1) {
 		switch (ret) {
-		case 'v':
-			verbose = true;
+		case 'p':
+			ret = atoi(optarg);
+			if (ret == -1)
+				perror("atoi");
+			pid = (pid_t)ret;
 			break;
 		case 'h':
-			usage(stdout, EXIT_SUCCESS);
+			usage(stdout, EXIT_SUCCESS, opts);
 		default:
-			usage(stderr, EXIT_FAILURE);
+			usage(stderr, EXIT_FAILURE, opts);
 			break;
 		}
 	}
-	if (verbose)
-		for (i = optind; i < argc; i++)
-			printf("argv[%d]=%s\n", i, argv[i]);
 
-	ret = xdaemon(getpid());
+	ret = xdaemon(pid);
 	if (ret == -1)
-		exit(EXIT_FAILURE);
+		return 1;
 
-	/* child */
-	for (;;) {
-		ret = pause();
+	/* send signal to the process to let them know my PID */
+	if (pid) {
+		union sigval val = { .sival_int = getpid() };
+
+		ret = sigqueue(pid, SIGUSR1, val);
 		if (ret == -1)
-			perror("pause");
+			perror("sigqueue");
+	}
+
+	/* light the fire */
+	for (;;) {
+		/* just wait for the signal... */
+		if (pause() == -1) {
+			fprintf(stderr, "exiting...\n");
+			exit(EXIT_SUCCESS);
+		}
 	}
 }
