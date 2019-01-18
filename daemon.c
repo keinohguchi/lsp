@@ -1,11 +1,20 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 #include <stdio.h>
-#include <fcntl.h>
 #include <stdlib.h>
+#include <stdbool.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <signal.h>
 #include <sys/types.h>
 #include <linux/limits.h>
+
+const char *progname;
+
+static void usage(FILE *stream, int status)
+{
+	fprintf(stream, "Usage: %s [-hv]\n", progname);
+	exit(status);
+}
 
 static void handler(int signo, siginfo_t *info, void *ctx)
 {
@@ -83,9 +92,28 @@ static int xdaemon(pid_t ppid)
 	return 0;
 }
 
-int main(void)
+int main(int argc, char *const argv[])
 {
-	int ret;
+	const char *const opts = "hv";
+	bool verbose = false;
+	int ret, i;
+
+	progname = argv[0];
+	while ((ret = getopt(argc, argv, opts)) != -1) {
+		switch (ret) {
+		case 'v':
+			verbose = true;
+			break;
+		case 'h':
+			usage(stdout, EXIT_SUCCESS);
+		default:
+			usage(stderr, EXIT_FAILURE);
+			break;
+		}
+	}
+	if (verbose)
+		for (i = optind; i < argc; i++)
+			printf("argv[%d]=%s\n", i, argv[i]);
 
 	ret = xdaemon(getpid());
 	if (ret == -1)
