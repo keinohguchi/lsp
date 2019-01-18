@@ -3,21 +3,48 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <signal.h>
 #include <sys/types.h>
 #include <linux/limits.h>
 
-int main(void)
+static void handler(int signo, siginfo_t *info, void *ctx)
 {
+	if (signo != SIGUSR1) {
+		printf("oops\n");
+		exit(EXIT_FAILURE);
+	}
+	printf("exiting...\n");
+	exit(EXIT_SUCCESS);
+}
+
+static int xdaemon(pid_t ppid)
+{
+	union sigval val;
 	pid_t pid;
-	int i;
+	int i, ret;
 
 	pid = fork();
 	if (pid == -1) {
 		perror("fork");
 		return -1;
-	} else if (pid)
-		/* let parent exit to become daemon */
-		exit(EXIT_SUCCESS);
+	} else if (pid) {
+		const struct sigaction act = {
+			.sa_sigaction	= handler,
+			.sa_flags	= SA_SIGINFO,
+		};
+
+		/* prepare to receive the daemon PID */
+		ret = sigaction(SIGUSR1, &act, NULL);
+		if (ret == -1)
+			perror("sigaction");
+
+		/* wait for the signal from the child and exit */
+		ret = pause();
+		if (ret == -1)
+			perror("pause");
+		/* no way */
+		exit(EXIT_FAILURE);
+	}
 
 	/* make it session leader/process group leader */
 	if (setsid() == -1) {
@@ -46,7 +73,28 @@ int main(void)
 		perror("dup2");
 		return -1;
 	}
-	for (;;)
-		if (pause() == -1)
+	/* send signal to the parent for the daemonization */
+	val.sival_int = getpid();
+	ret = sigqueue(ppid, SIGUSR1, val);
+	if (ret == -1) {
+		perror("sigqueue");
+		return -1;
+	}
+	return 0;
+}
+
+int main(void)
+{
+	int ret;
+
+	ret = xdaemon(getpid());
+	if (ret == -1)
+		exit(EXIT_FAILURE);
+
+	/* child */
+	for (;;) {
+		ret = pause();
+		if (ret == -1)
 			perror("pause");
+	}
 }
