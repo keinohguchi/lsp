@@ -32,5 +32,5 @@ $(TESTS): $(PROGS) $(TEST_SRCS)
 	@printf "$@:\t"
 	@if [ -f $@.c ]; then \
 		$(CC) $(CFLAGS) -o $@ $@.c;    \
-		if ./$@; then echo PASS; else echo FAIL; fi \
+		if ./$@; then echo PASS; else echo FAIL; exit 1; fi \
 	else echo "N/A"; fi
