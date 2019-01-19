@@ -4,11 +4,12 @@
 #include <stdbool.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <errno.h>
 #include <signal.h>
 #include <sys/types.h>
 #include <linux/limits.h>
 
-const char *progname;
+static const char *progname;
 
 static void usage(FILE *stream, int status, const char *const opts)
 {
@@ -76,6 +77,8 @@ int main(int argc, char *const argv[])
 			break;
 		case 'h':
 			usage(stdout, EXIT_SUCCESS, opts);
+			break;
+		case '?':
 		default:
 			usage(stderr, EXIT_FAILURE, opts);
 			break;
@@ -86,10 +89,13 @@ int main(int argc, char *const argv[])
 	if (ret == -1)
 		return 1;
 
-	/* send signal to the process to let them know my PID */
+	/* send signal to the process with -p option */
 	if (pid) {
+		/*
+		 * signal handler can get pid from siginfo_t but
+		 * just for fun.
+		 */
 		union sigval val = { .sival_int = getpid() };
-
 		ret = sigqueue(pid, SIGUSR1, val);
 		if (ret == -1)
 			perror("sigqueue");
@@ -99,7 +105,13 @@ int main(int argc, char *const argv[])
 	for (;;) {
 		/* just wait for the signal... */
 		if (pause() == -1) {
-			fprintf(stderr, "exiting...\n");
+			/*
+			 * those should be logged instead
+			 * of stdout/stderr, as it's daemon.
+			 */
+			if (errno != EINTR)
+				perror("pause");
+			fprintf(stderr, "interrupted...\n");
 			exit(EXIT_SUCCESS);
 		}
 	}

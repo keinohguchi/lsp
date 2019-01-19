@@ -30,7 +30,13 @@ clean:
 	$(CC) $(CFLAGS) -o $@ $<
 $(TESTS): $(PROGS) $(TEST_SRCS)
 	@printf "$@:\t"
-	@if [ -f $@.c ]; then \
-		$(CC) $(CFLAGS) -o $@ $@.c;    \
-		if ./$@; then echo PASS; else echo FAIL; exit 1; fi \
-	else echo "N/A"; fi
+	@if [ -f $@.c ]; then               \
+		$(CC) $(CFLAGS) -o $@ $@.c; \
+		if ./$@ 2>/dev/null; then   \
+			echo PASS;          \
+		else                        \
+			echo FAIL; exit 1;  \
+		fi                          \
+	else                                \
+		echo "N/A";                 \
+	fi
