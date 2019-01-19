@@ -61,7 +61,7 @@ static int xdaemon(pid_t ppid)
 
 int main(int argc, char *const argv[])
 {
-	const char *const opts = "hp";
+	const char *const opts = "hp:";
 	pid_t pid = 0;
 	int ret;
 
