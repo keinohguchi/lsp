@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <limits.h>
 #include <signal.h>
 #include <sys/types.h>
 
@@ -23,9 +22,9 @@ static char *const pid2str(char str[], size_t len, pid_t pid)
 
 int main(void)
 {
-	char buf[LONG_WIDTH];
+	char buf[11]; /* XXX */
 	char *const target = "./daemon";
-	char *const pid_str = pid2str(buf, LONG_WIDTH, getpid());
+	char *const pid_str = pid2str(buf, 11, getpid());
 	const struct test {
 		const char	*name;
 		char		*const argv[5];
