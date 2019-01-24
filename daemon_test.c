@@ -10,8 +10,8 @@
 
 /* daemon information. */
 static struct daemon_info {
-	pid_t	pid;
-	int	cookie;
+	sig_atomic_t	pid;
+	sig_atomic_t	cookie;
 } daemon_info = {
 	.pid	= 0,
 	.cookie	= 0,
