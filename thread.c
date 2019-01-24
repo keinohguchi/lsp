@@ -15,8 +15,8 @@ struct thread {
 	int		status;
 };
 
-/* thread main */
-static void *run(void *arg)
+/* runner thread */
+static void *runner(void *arg)
 {
 	const pthread_t me = pthread_self();
 	struct thread *thing = arg;
@@ -59,8 +59,8 @@ int main(int argc, char *argv[])
 {
 	const char *opts = "c:h";
 	const struct option lopts[] = {
-		{"count", required_argument, NULL, 'c'},
-		{"help",  no_argument, NULL, 'h'},
+		{"count",	required_argument,	NULL, 'c'},
+		{"help",	no_argument,		NULL, 'h'},
 		{}, /* sentry */
 	};
 	struct thread *things;
@@ -101,7 +101,7 @@ int main(int argc, char *argv[])
 			perror("snprintf");
 			goto out;
 		}
-		ret = pthread_create(&thing->tid, NULL, run, (void *)thing);
+		ret = pthread_create(&thing->tid, NULL, runner, (void *)thing);
 		if (ret) {
 			errno = ret;
 			perror("pthread_create");
