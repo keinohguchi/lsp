@@ -121,8 +121,7 @@ static char *const progpath(const char *const prog)
 int main(void)
 {
 	char *const pid_str = pidstring(getpid());
-	char *const target = "daemon";
-	char *const path = progpath(target);
+	char *const target = progpath("daemon");
 	const struct test {
 		const char	*name;
 		char		*const argv[5];
@@ -157,7 +156,7 @@ int main(void)
 			perror("fork");
 			abort();
 		} else if (pid == 0) {
-			if (execv(path, t->argv) == -1) {
+			if (execv(target, t->argv) == -1) {
 				perror("execv");
 				abort();
 			}
