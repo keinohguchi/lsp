@@ -2,10 +2,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <errno.h>
+#include <limits.h>
 #include <signal.h>
-#include <sys/types.h>
+#include <errno.h>
 #include <sys/wait.h>
+#include <sys/types.h>
 #include <sys/ucontext.h>
 
 /* daemon information. */
@@ -87,18 +88,19 @@ static int shutdown(struct daemon_info *info)
 	return 0;
 }
 
-static char *const pid2str(char str[], size_t len, pid_t pid)
+static char *const pidstring(pid_t pid)
 {
-	int ret = snprintf(str, len, "%d", pid);
-	if (ret == -1)
+	static char buf[LINE_MAX];
+	if (snprintf(buf, sizeof(buf), "%d", pid) == -1) {
 		perror("snprintf");
-	return str;
+		abort();
+	}
+	return buf;
 }
 
 int main(void)
 {
-	char buf[11]; /* size of pid_t for string */
-	char *const pid_str = pid2str(buf, sizeof(buf), getpid());
+	char *const pid_str = pidstring(getpid());
 	char *const target = "./daemon";
 	const struct test {
 		const char	*name;
