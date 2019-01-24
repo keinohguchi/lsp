@@ -124,7 +124,7 @@ int main(void)
 	char *const target = progpath("daemon");
 	const struct test {
 		const char	*name;
-		char		*const argv[5];
+		char		*const argv[4];
 	} tests[] = {
 		{
 			.name	= "-p option",
