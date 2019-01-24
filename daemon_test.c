@@ -5,14 +5,23 @@
 #include <errno.h>
 #include <signal.h>
 #include <sys/types.h>
+#include <sys/wait.h>
+#include <sys/ucontext.h>
 
-static pid_t daemon_pid;
+/* daemon information. */
+static struct daemon_info {
+	pid_t	pid;
+	int	cookie;
+} daemon_info = {
+	.pid	= 0,
+	.cookie	= 0,
+};
 
 /* retrieving the daemon's state */
-static void handler(int signo, siginfo_t *si, void *ctx)
+static void handler(int signo, siginfo_t *si, void *context)
 {
-	/* let's figure out how to pass context... */
-	fprintf(stderr, "ctx=%p\n", ctx);
+	ucontext_t *ctx = context;
+	int i;
 
 	/* signal number */
 	if (signo != SIGUSR1 || si->si_signo != SIGUSR1) {
@@ -35,7 +44,47 @@ static void handler(int signo, siginfo_t *si, void *ctx)
 			si->si_pid, si->si_value.sival_int);
 		exit(EXIT_FAILURE);
 	}
-	daemon_pid = si->si_int;
+	/* check signal mask */
+	for (i = 0; i < _NSIG; i++) {
+	     if (sys_siglist[i] == NULL)
+		     continue;
+	     fprintf(stderr, "%s %s masked\n",
+		     sys_siglist[i],
+		     sigismember(&ctx->uc_sigmask, i) ? "is" : "is not");
+	}
+	/*
+	 * As we mask all the signals, we can use global variable
+	 * to pass the daemon pid around.
+	 */
+	daemon_info.pid = si->si_int;
+	daemon_info.cookie = si->si_int;
+}
+
+static int shutdown(struct daemon_info *info)
+{
+	/* Returns the cookie back */
+	union sigval val = { .sival_int = info->cookie };
+	int status;
+
+	/* terminate the daemon */
+	if (sigqueue(info->pid, SIGTERM, val) == -1) {
+		perror("sigqueue");
+		return -1;
+	}
+
+	/* wait for the daemon to exit */
+	if (waitpid(info->pid, &status, WNOHANG) == -1) {
+		/* daemon is gone */
+		if (errno == ECHILD)
+			return 0;
+		perror("waitpid");
+		return -1;
+	}
+	if (WIFEXITED(status))
+		return WEXITSTATUS(status);
+	if (!WIFSIGNALED(status))
+		return -1;
+	return 0;
 }
 
 static char *const pid2str(char str[], size_t len, pid_t pid)
@@ -62,20 +111,24 @@ int main(void)
 		{}, /* sentry */
 	};
 	const struct test *t;
+	struct sigaction sa = {
+		.sa_sigaction	= handler,
+		.sa_flags	= SA_SIGINFO,
+	};
+	if (sigfillset(&sa.sa_mask) == -1) {
+		perror("sigfillset");
+		return 1;
+	}
+	if (sigaction(SIGUSR1, &sa, NULL) == -1) {
+		perror("sigaction");
+		return 1;
+	}
 
 	for (t = tests; t->name; t++) {
-		struct sigaction sa = {
-			.sa_sigaction	= handler,
-			.sa_flags	= SA_SIGINFO,
-		};
 		pid_t pid;
 		int ret;
 
-		if (sigfillset(&sa.sa_mask) == -1)
-			perror("sigfillset");
-		if (sigaction(SIGUSR1, &sa, NULL) == -1)
-			perror("sigaction");
-
+		/* run daemon */
 		pid = fork();
 		if (pid == -1)
 			perror("fork");
@@ -85,14 +138,18 @@ int main(void)
 				perror("execv");
 			exit(EXIT_SUCCESS);
 		}
+
+		/* wait for the daemon to send signal back to us. */
 		for (;;)
 			if (pause() == -1) {
 				if (errno != EINTR)
 					perror("pause");
-				fprintf(stderr, "interrupted by %d...\n",
-					daemon_pid);
 				break;
 			}
+
+		/* terminate the daemon */
+		if ((ret = shutdown(&daemon_info)) != 0)
+			return ret;
 	}
 	return 0;
 }

@@ -11,12 +11,6 @@
 
 static const char *progname;
 
-static void usage(FILE *stream, int status, const char *const opts)
-{
-	fprintf(stream, "Usage: %s [-%s]\n", progname, opts);
-	exit(status);
-}
-
 static int xdaemon(pid_t ppid)
 {
 	pid_t pid;
@@ -60,8 +54,29 @@ static int xdaemon(pid_t ppid)
 	return 0;
 }
 
+static void usage(FILE *stream, int status, const char *const opts)
+{
+	fprintf(stream, "Usage: %s [-%s]\n", progname, opts);
+	exit(status);
+}
+
+static void handler(int signo, siginfo_t *si, void *context)
+{
+	/* only SIGTERM */
+	if (signo != SIGTERM)
+		exit(EXIT_FAILURE);
+	/* PID as a cookie */
+	if (si->si_int != getpid())
+		exit(EXIT_FAILURE);
+	exit(EXIT_SUCCESS);
+}
+
 int main(int argc, char *const argv[])
 {
+	struct sigaction act = {
+		.sa_flags	= SA_SIGINFO,
+		.sa_sigaction	= handler,
+	};
 	const char *const opts = "hp:";
 	pid_t pid = 0;
 	int ret;
@@ -89,16 +104,25 @@ int main(int argc, char *const argv[])
 	if (ret == -1)
 		return 1;
 
+	/* signal handler */
+	if (sigemptyset(&act.sa_mask) == -1) {
+		perror("sigemptyset");
+		return 1;
+	}
+	if (sigaction(SIGTERM, &act, NULL) == -1) {
+		perror("sigaction");
+		return 1;
+	}
+
 	/* send signal to the process with -p option */
 	if (pid) {
-		/*
-		 * signal handler can get pid from siginfo_t but
-		 * just for fun.
-		 */
+		/* Use PID as a cookie for now */
 		union sigval val = { .sival_int = getpid() };
 		ret = sigqueue(pid, SIGUSR1, val);
-		if (ret == -1)
+		if (ret == -1) {
 			perror("sigqueue");
+			return 1;
+		}
 	}
 
 	/* light the fire */
@@ -109,10 +133,10 @@ int main(int argc, char *const argv[])
 			 * those should be logged instead
 			 * of stdout/stderr, as it's daemon.
 			 */
-			if (errno != EINTR)
+			if (errno != EINTR) {
 				perror("pause");
-			fprintf(stderr, "interrupted...\n");
-			exit(EXIT_SUCCESS);
+				return 1;
+			}
 		}
 	}
 }
