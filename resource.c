@@ -9,11 +9,6 @@
 
 static const char *progname;
 
-int set_resource(int resource, const struct rlimit *rlim)
-{
-	return setrlimit(resource, rlim);
-}
-
 static void usage(FILE *stream, int status, const char *const opts,
 		  const struct option *lopts)
 {
@@ -58,6 +53,7 @@ int main(int argc, char *argv[])
 	int resources[RLIMIT_NLIMITS];
 	int resource_index = 0;
 	bool list = false;
+	long int value;
 	int i;
 
 	progname = argv[0];
@@ -95,14 +91,32 @@ int main(int argc, char *argv[])
 			break;
 		}
 	}
+	value = -1;
+	if (optind == argc)
+		list = true;
+	else {
+		value = strtol(argv[optind], NULL, 10);
+		if (value == -1) {
+			perror("strtol");
+			abort();
+		}
+	}
 	/* get all the resource if there is no options */
 	if (resource_index == 0) {
-		list = true;
 		for (i = 0; i < RLIMIT_NLIMITS; i++)
 			resources[resource_index++] = i;
 	}
 	for (i = 0; i < resource_index; i++) {
 		struct rlimit rlim;
+		/* we only get one value and set it to all the options */
+		if (value != -1) {
+			rlim.rlim_cur = value;
+			rlim.rlim_max = RLIM_INFINITY;
+			if (setrlimit(resources[i], &rlim) == -1) {
+				perror("setrlimit");
+				abort();
+			}
+		}
 		if (!list)
 			continue;
 		if (getrlimit(resources[i], &rlim) == -1) {
