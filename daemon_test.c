@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <limits.h>
 #include <signal.h>
+#include <string.h>
 #include <errno.h>
 #include <sys/wait.h>
 #include <sys/types.h>
@@ -57,7 +58,7 @@ static void handler(int signo, siginfo_t *si, void *context)
 	 * As we mask all the signals, we can use global variable
 	 * to pass the daemon pid around.
 	 */
-	daemon_info.pid = si->si_int;
+	daemon_info.pid = si->si_pid;
 	daemon_info.cookie = si->si_int;
 }
 
@@ -70,7 +71,7 @@ static int shutdown(struct daemon_info *info)
 	/* terminate the daemon */
 	if (sigqueue(info->pid, SIGTERM, val) == -1) {
 		perror("sigqueue");
-		return -1;
+		abort();
 	}
 
 	/* wait for the daemon to exit */
@@ -79,7 +80,7 @@ static int shutdown(struct daemon_info *info)
 		if (errno == ECHILD)
 			return 0;
 		perror("waitpid");
-		return -1;
+		abort();
 	}
 	if (WIFEXITED(status))
 		return WEXITSTATUS(status);
@@ -98,10 +99,30 @@ static char *const pidstring(pid_t pid)
 	return buf;
 }
 
+static char *const progpath(const char *const prog)
+{
+	static char buf[LINE_MAX];
+	size_t len;
+	char *endp;
+
+	if (getcwd(buf, sizeof(buf)) == NULL) {
+		perror("getcwd");
+		abort();
+	}
+	len = strlen(buf);
+	endp = &buf[len];
+	if (snprintf(endp, LINE_MAX-len, "/%s", prog) < 0) {
+		perror("snprintf");
+		abort();
+	}
+	return buf;
+}
+
 int main(void)
 {
 	char *const pid_str = pidstring(getpid());
-	char *const target = "./daemon";
+	char *const target = "daemon";
+	char *const path = progpath(target);
 	const struct test {
 		const char	*name;
 		char		*const argv[5];
@@ -119,11 +140,11 @@ int main(void)
 	};
 	if (sigfillset(&sa.sa_mask) == -1) {
 		perror("sigfillset");
-		return 1;
+		abort();
 	}
 	if (sigaction(SIGUSR1, &sa, NULL) == -1) {
 		perror("sigaction");
-		return 1;
+		abort();
 	}
 
 	for (t = tests; t->name; t++) {
@@ -132,20 +153,24 @@ int main(void)
 
 		/* run daemon */
 		pid = fork();
-		if (pid == -1)
+		if (pid == -1) {
 			perror("fork");
-		else if (pid == 0) {
-			ret = execv(target, t->argv);
-			if (ret == -1)
+			abort();
+		} else if (pid == 0) {
+			if (execv(path, t->argv) == -1) {
 				perror("execv");
-			exit(EXIT_SUCCESS);
+				abort();
+			}
+			/* won't reach */
 		}
 
 		/* wait for the daemon to send signal back to us. */
 		for (;;)
 			if (pause() == -1) {
-				if (errno != EINTR)
+				if (errno != EINTR) {
 					perror("pause");
+					abort();
+				}
 				break;
 			}
 
