@@ -1,128 +1,102 @@
 /* SPDX-License-Idetifier: GPL-2.0 */
 #include <stdio.h>
-#include <errno.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <limits.h>
+#include <string.h>
 #include <pthread.h>
+#include <errno.h>
+#include <sys/wait.h>
 
-#include "withdraw.h"
+static const char *prog = "withdraw";
 
-struct thread_arg {
-	pthread_t	tid;
-	struct account	*account;
-	unsigned int	amount;
-	long int	ret;
-};
-
-static void *withdraw_thread(void *arg)
+static char *const targetpath(const char *const prog)
 {
-	struct thread_arg *t = (struct thread_arg *)arg;
-	pthread_t me = pthread_self();
-	if (!pthread_equal(me, t->tid)) {
-		fprintf(stderr, "wrong thread ID:\n- want: 0x%ld\n-  got: 0x%ld\n",
-			t->tid, me);
-		return t;
+	static char buf[LINE_MAX];
+	size_t len;
+	char *endp;
+
+	if (getcwd(buf, sizeof(buf)) == NULL) {
+		perror("getcwd");
+		abort();
 	}
-	t->ret = withdraw(t->account, t->amount);
-	return t;
+	len = strlen(buf);
+	endp = &buf[len];
+	if (snprintf(endp, LINE_MAX-len, "/%s", prog) < 0) {
+		perror("snprintf");
+		abort();
+	}
+	return buf;
 }
 
 int main(void)
 {
+	char *const target = targetpath(prog);
 	const struct test {
 		const char	*name;
-		long int	initial_balance;
-		unsigned int	withdraw_amount;
-		int		withdraw_nr;
+		char		*const argv[8];
 		long int	want;
-	} tests[] = {
+	} *t, tests[] = {
 		{
-			.name			= "900 withdraw from 1000 balance",
-			.initial_balance	= 1000,
-			.withdraw_amount	= 900,
-			.withdraw_nr		= 1,
-			.want			= 100,
+			.name	= "900 withdraw from 1000 deposit",
+			.argv	= {target, "-d", "1000", "-w", "900", "-c", "1", NULL},
+			.want	= 100,
 		},
 		{
-			.name			= "9 100 withdraws from 1000 balance",
-			.initial_balance	= 1000,
-			.withdraw_amount	= 100,
-			.withdraw_nr		= 9,
-			.want			= 100,
+			.name	= "9 100 withdraws from 1000 deposit",
+			.argv	= {target, "-d", "1000", "-w", "100", "-c", "9", NULL},
+			.want	= 100,
 		},
 		{
-			.name			= "100 10 withdraws from 1000 balance",
-			.initial_balance	= 1000,
-			.withdraw_amount	= 10,
-			.withdraw_nr		= 100,
-			.want			= 0,
+			.name	= "100 10 withdraws from 1000 deposit",
+			.argv	= {target, "-d", "1000", "-w", "10", "-c", "100", NULL},
+			.want	= 0,
 		},
 		{
-			.name			= "1000 1 withdraws from 1000 balance",
-			.initial_balance	= 1000,
-			.withdraw_amount	= 1,
-			.withdraw_nr		= 1000,
-			.want			= 0,
+			.name	= "1000 1 withdraws from 1000 deposit",
+			.argv	= {target, "-d", "1000", "-w", "1", "-c", "1000", NULL},
+			.want	= 0,
 		},
 		{}, /* sentry */
 	};
-	const struct test *t;
 
 	for (t = tests; t->name; t++) {
-		struct thread_arg *args = NULL;
-		struct account *a = NULL;
-		int withdraw_nr;
-		long int got;
-		int ret, i;
+		int status;
+		pid_t pid;
 
-		ret = 1;
-		args = calloc(t->withdraw_nr, sizeof(struct thread_arg));
-		if (!args) {
-			perror("calloc");
-			goto out;
-		}
-		a = open_account(t->initial_balance);
-		if (!a) {
-			fprintf(stderr, "%s: cannot open account\n", t->name);
-			goto out;
-		}
-		withdraw_nr = t->withdraw_nr;
-		for (i = 0; i < withdraw_nr; i++) {
-			struct thread_arg *arg = &args[i];
-
-			arg->account = a;
-			arg->amount = t->withdraw_amount;
-			ret = pthread_create(&arg->tid, NULL, withdraw_thread, arg);
-			if (ret) {
-				withdraw_nr = i;
-				errno = ret;
-				ret = 1;
-				perror("pthread_create");
-				goto test;
+		pid = fork();
+		if (pid == -1) {
+			fprintf(stderr, "%s: fork: %s\n",
+				t->name, strerror(errno));
+			abort();
+		} else if (pid == 0) {
+			if (execv(target, t->argv) == -1) {
+				fprintf(stderr, "%s: execv: %s\n",
+					t->name, strerror(errno));
+				abort();
 			}
+			/* can't reach */
 		}
-test:
-		for (i = 0; i < withdraw_nr; i++) {
-			struct thread_arg *arg = &args[i];
-			ret = pthread_join(arg->tid, NULL);
-			if (ret) {
-				errno = ret;
-				perror("pthread_join");
-			}
+		if (waitpid(pid, &status, 0) == -1) {
+			fprintf(stderr, "%s: waitpid: %s\n",
+				t->name, strerror(errno));
+			abort();
 		}
-		ret = 0;
-		got = balance(a);
-		if (got != t->want) {
-			fprintf(stderr, "%s: unexpected result:\n\t- want: %ld\n\t-  got: %ld\n",
-				t->name, t->want, got);
-			ret = 1;
+		if (!WIFEXITED(status)) {
+			fprintf(stderr, "%s: cannot finish\n",
+				t->name);
+			return 1;
 		}
-out:
-		if (a)
-			close_account(a);
-		if (args)
-			free(args);
-		if (ret)
-			return ret;
+		if (WIFSIGNALED(status)) {
+			fprintf(stderr, "%s: got signaled with %s\n",
+				t->name, strsignal(WSTOPSIG(status)));
+			return 1;
+		}
+		if (WEXITSTATUS(status) != 0) {
+			fprintf(stderr, "%s: failed with status=%d\n",
+				t->name, WEXITSTATUS(status));
+			return WEXITSTATUS(status);
+		}
 	}
 	return 0;
 }
