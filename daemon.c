@@ -79,15 +79,16 @@ int main(int argc, char *const argv[])
 	};
 	const char *const opts = "hp:";
 	pid_t pid = 0;
-	int ret;
+	int ret, opt;
 
 	progname = argv[0];
-	while ((ret = getopt(argc, argv, opts)) != -1) {
-		switch (ret) {
+	while ((opt = getopt(argc, argv, opts)) != -1) {
+		switch (opt) {
 		case 'p':
-			ret = atoi(optarg);
-			if (ret == -1)
+			if ((ret = strtol(optarg, NULL, 10)) == -1) {
 				perror("atoi");
+				abort();
+			}
 			pid = (pid_t)ret;
 			break;
 		case 'h':
