@@ -10,7 +10,7 @@ thread
 withdraw
 xattr
 mstat
-resolution
+clocks
 *_test
 *.o
 *.~
