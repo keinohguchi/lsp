@@ -127,7 +127,7 @@ static void usage(FILE *stream, int status, const char *const opts,
 		  const struct option *const lopts)
 {
 	const struct option *o;
-	fprintf(stream, "usage: %s [-%s] path [key [value]]\n", progname, opts);
+	fprintf(stream, "usage: %s [-%s] [path [key [value]]]\n", progname, opts);
 	fprintf(stream, "options\n");
 	for (o = lopts; o->name; o++) {
 		fprintf(stream, "\t-%c,--%s", o->val, o->name);
@@ -197,9 +197,10 @@ int main(int argc, char *argv[])
 			break;
 		}
 	}
-	if (optind >= argc)
-		usage(stderr, EXIT_FAILURE, opts, lopts);
-	path = argv[optind++];
+	/* self file check by default */
+	path = progname;
+	if (optind < argc)
+		path = argv[optind++];
 
 	key = value = NULL;
 	ret = 0;
