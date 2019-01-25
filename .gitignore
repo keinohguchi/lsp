@@ -8,7 +8,7 @@ affinity
 resource
 thread
 withdraw
-attribute
+xattr
 mstat
 resolution
 *_test
