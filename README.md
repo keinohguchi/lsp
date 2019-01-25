@@ -11,19 +11,31 @@
 ## Build
 
 ```sh
-make
+$ make
 ```
 
 ## Test
 
 ```sh
-make test
+$ make test
+inode_test:     N/A
+block_test:     N/A
+wait_test:      N/A
+system_test:    N/A
+daemon_test:    PASS
+affinity_test:  PASS
+resource_test:  PASS
+thread_test:    N/A
+withdraw_test:  PASS
+xattr_test:     N/A
+mstat_test:     N/A
+clocks_test:    N/A
 ```
 
 ## Cleanup
 
 ```sh
-make clean
+$ make clean
 ```
 
 Happy Hackin!
