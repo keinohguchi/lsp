@@ -25,11 +25,12 @@ system_test:    N/A
 daemon_test:    PASS
 affinity_test:  PASS
 resource_test:  PASS
-thread_test:    N/A
+thread_test:    PASS
 withdraw_test:  PASS
 xattr_test:     N/A
 mstat_test:     N/A
 clocks_test:    N/A
+$
 ```
 
 ## Cleanup
