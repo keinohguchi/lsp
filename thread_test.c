@@ -33,7 +33,7 @@ int main(void)
 	char *const path = progpath(progname);
 	const struct test {
 		const char	*name;
-		char		*const argv[5];
+		char		*const argv[4];
 	} *t, tests[] = {
 		{
 			.name	= "1 thread",
@@ -88,12 +88,14 @@ int main(void)
 				t->name, strsignal(WTERMSIG(status)));
 			abort();
 		}
-		if (WIFEXITED(status)) {
-			if (WEXITSTATUS(status) != 0) {
-				fprintf(stderr, "%s: got exit status %d\n",
-					t->name, WEXITSTATUS(status));
-				abort();
-			}
+		if (!WIFEXITED(status)) {
+			fprintf(stderr, "%s: won't exit\n", t->name);
+			abort();
+		}
+		if (WEXITSTATUS(status) != 0) {
+			fprintf(stderr, "%s: got exit status %d\n",
+				t->name, WEXITSTATUS(status));
+			abort();
 		}
 	}
 	return 0;
