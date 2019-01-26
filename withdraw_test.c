@@ -89,7 +89,7 @@ int main(void)
 		}
 		if (WIFSIGNALED(status)) {
 			fprintf(stderr, "%s: got signaled with %s\n",
-				t->name, strsignal(WSTOPSIG(status)));
+				t->name, strsignal(WTERMSIG(status)));
 			return 1;
 		}
 		if (WEXITSTATUS(status) != 0) {

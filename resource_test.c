@@ -129,7 +129,7 @@ int main(void)
 		}
 		if (WIFSIGNALED(status)) {
 			fprintf(stderr, "%s: killed by %s\n",
-				t->name, strsignal(WSTOPSIG(status)));
+				t->name, strsignal(WTERMSIG(status)));
 			return 1;
 		}
 		if (WEXITSTATUS(status) != 0) {
