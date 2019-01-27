@@ -6,6 +6,8 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+static const char *progname;
+
 /* get inode number for the open file */
 static int get_inode(int fd)
 {
@@ -20,15 +22,21 @@ static int get_inode(int fd)
 	return buf.st_ino;
 }
 
+static void usage(FILE *stream, int status)
+{
+	fprintf(stream, "usage: %s <filename>\n", progname);
+	exit(status);
+}
+
 int main(int argc, const char *argv[])
 {
 	int ret;
 	int fd;
 
-	if (argc < 2) {
-		fprintf(stdout, "usage: %s <filename>\n", argv[0]);
-		exit(EXIT_SUCCESS);
-	}
+	progname = argv[0];
+	if (argc < 2)
+		usage(stdout, EXIT_SUCCESS);
+
 	fd = open(argv[1], O_RDONLY);
 	if (fd == -1) {
 		perror("open");
@@ -36,10 +44,12 @@ int main(int argc, const char *argv[])
 	}
 	ret = get_inode(fd);
 	if (ret == -1) {
+		ret = 1;
 		fprintf(stderr, "cannot get inode: %s\n", argv[1]);
 		goto out;
 	}
 	printf("file=%s,inode=%d\n", argv[1], ret);
+	ret = 0;
 out:
 	if (close(fd) == -1)
 		perror("close");
