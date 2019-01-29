@@ -6,7 +6,7 @@
 #include <string.h>
 #include <sys/wait.h>
 
-static char *const progpath(const char *const prog)
+static char *const abspath(const char *const prog)
 {
 	static char buf[LINE_MAX];
 	size_t len;
@@ -28,26 +28,30 @@ static char *const progpath(const char *const prog)
 int main(void)
 {
 	const char *const target = "inode";
-	char *const targetpath = progpath(target);
+	char *const path = abspath(target);
 	const struct test {
 		char	*name;
 		char	*const argv[3];
 	} *t, tests[] = {
 		{
+			.name	= "--help option",
+			.argv	= {path, "--help", NULL},
+		},
+		{
 			.name	= "inode itself",
-			.argv	= {targetpath, "./inode", NULL},
+			.argv	= {path, "./inode", NULL},
 		},
 		{
 			.name	= "Makefile",
-			.argv	= {targetpath, "Makefile", NULL},
+			.argv	= {path, "Makefile", NULL},
 		},
 		{
 			.name	= "current directory",
-			.argv	= {targetpath, ".", NULL},
+			.argv	= {path, ".", NULL},
 		},
 		{
 			.name	= "parent directory",
-			.argv	= {targetpath, "..", NULL},
+			.argv	= {path, "..", NULL},
 		},
 		{}, /* sentry */
 	};
@@ -62,7 +66,7 @@ int main(void)
 			abort();
 		} else if (pid == 0) {
 			/* child */
-			ret = execv(targetpath, t->argv);
+			ret = execv(path, t->argv);
 			if (ret == -1) {
 				perror("execv");
 				abort();
