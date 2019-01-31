@@ -12,6 +12,9 @@ workflows:
       - build:
           requires:
             - checkout
+      - help:
+          requires:
+            - checkout
       - test:
           requires:
             - checkout
@@ -30,12 +33,12 @@ jobs:
       - attach_workspace:
           at: /home/circleci/project/lsp
       - run: make
-  run:
+  help:
     <<: *defaults
     steps:
       - attach_workspace:
           at: /home/circleci/project/lsp
-      - run: make run
+      - run: make help
   test:
     <<: *defaults
     steps:

@@ -54,6 +54,12 @@ static void usage(FILE *stream, int status, const char *const opts)
 
 int main(int argc, char *argv[])
 {
+	const struct option lopts[] = {
+		{"help",	no_argument,		NULL,	'h'},
+		{"count",	required_argument,	NULL,	'c'},
+		{"list",	no_argument,		NULL,	'l'},
+		{},
+	};
 	const char *opts = "c:hl";
 	cpu_set_t mask;
 	long int cpu = -1;
@@ -61,7 +67,7 @@ int main(int argc, char *argv[])
 	int ret, i, opt;
 
 	progname = argv[0];
-	while ((opt = getopt(argc, argv, opts)) != -1) {
+	while ((opt = getopt_long(argc, argv, opts, lopts, NULL)) != -1) {
 		switch (opt) {
 		case 'c':
 			cpu = strtol(optarg, NULL, 10);

@@ -2,8 +2,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <getopt.h>
 #include <sys/wait.h>
 #include <sys/types.h>
+
+static const char *progname;
 
 /* let child send signum, if it's non zero and put the
  * result in status */
@@ -26,17 +29,50 @@ static int xwait(int ret, int *status)
 	return wait(status);
 }
 
+static void usage(FILE *stream, int status, const char *const opts,
+		  const struct option *const lopts)
+{
+	const struct option *o;
+	fprintf(stream, "usage: %s [-%s] [exit code]\n", progname, opts);
+	fprintf(stream, "options:\n");
+	for (o = lopts; o->name; o++) {
+		fprintf(stream, "\t--%s,-%c:\t", o->name, o->val);
+		switch (o->val) {
+		case 'h':
+			fprintf(stream, "show this message\n");
+			break;
+		}
+	}
+	exit(status);
+}
+
 int main(int argc, char *argv[])
 {
-	int ret;
-	int status;
+	const struct option lopts[] = {
+		{"help",	no_argument,	NULL,	'h'},
+		{},
+	};
+	const char *opts = "h";
+	int opt, ret, status;
 	pid_t pid;
 
+	progname = argv[0];
+	while ((opt = getopt_long(argc, argv, opts, lopts, NULL)) != -1) {
+		switch (opt) {
+		case 'h':
+			usage(stdout, EXIT_SUCCESS, opts, lopts);
+			break;
+		case '?':
+		default:
+			usage(stderr, EXIT_FAILURE, opts, lopts);
+			break;
+		}
+	}
 	/* dump core in case of no exit status specified */
-	if (argc < 2)
+	if (optind >= argc)
 		ret = 0;
 	else
-		ret = atoi(argv[1]);
+		ret = atoi(argv[optind++]);
 
 	/*
 	 * fork the child and let it exit with the ret

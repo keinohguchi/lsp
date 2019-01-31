@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <getopt.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
@@ -54,9 +55,23 @@ static int xdaemon(pid_t ppid)
 	return 0;
 }
 
-static void usage(FILE *stream, int status, const char *const opts)
+static void usage(FILE *stream, int status, const char *const opts,
+		  const struct option *const lopts)
 {
-	fprintf(stream, "Usage: %s [-%s]\n", progname, opts);
+	const struct option *o;
+	fprintf(stream, "usage: %s [-%s]\n", progname, opts);
+	fprintf(stream, "options:\n");
+	for (o = lopts; o->name; o++) {
+		fprintf(stream, "\t--%s,-%c", o->name, o->val);
+		switch (o->val) {
+		case 'h':
+			fprintf(stream, ":\t\tshow this message\n");
+			break;
+		case 'p':
+			fprintf(stream, " <pid>:\tparent process ID\n");
+			break;
+		}
+	}
 	exit(status);
 }
 
@@ -73,16 +88,21 @@ static void handler(int signo, siginfo_t *si, void *context)
 
 int main(int argc, char *const argv[])
 {
+	const struct option lopts[] = {
+		{"help",	no_argument,		NULL,	'h'},
+		{"ppid",	required_argument,	NULL,	'p'},
+		{},
+	};
+	const char *const opts = "hp:";
 	struct sigaction act = {
 		.sa_flags	= SA_SIGINFO,
 		.sa_sigaction	= handler,
 	};
-	const char *const opts = "hp:";
 	pid_t pid = 0;
 	int ret, opt;
 
 	progname = argv[0];
-	while ((opt = getopt(argc, argv, opts)) != -1) {
+	while ((opt = getopt_long(argc, argv, opts, lopts, NULL)) != -1) {
 		switch (opt) {
 		case 'p':
 			if ((ret = strtol(optarg, NULL, 10)) == -1) {
@@ -92,11 +112,11 @@ int main(int argc, char *const argv[])
 			pid = (pid_t)ret;
 			break;
 		case 'h':
-			usage(stdout, EXIT_SUCCESS, opts);
+			usage(stdout, EXIT_SUCCESS, opts, lopts);
 			break;
 		case '?':
 		default:
-			usage(stderr, EXIT_FAILURE, opts);
+			usage(stderr, EXIT_FAILURE, opts, lopts);
 			break;
 		}
 	}

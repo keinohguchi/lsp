@@ -20,10 +20,10 @@ CFLAGS += -Werror
 CFLAGS += -g
 CFLAGS += -lpthread
 CFLAGS += -D_GNU_SOURCE
-.PHONY: all run test check clean $(TESTS)
+.PHONY: all help test check clean $(TESTS)
 all: $(PROGS)
-run: $(PROGS)
-	@for i in $^; do if ! ./$$i; then exit 1; fi; done
+help: $(PROGS)
+	@for i in $^; do if ! ./$$i --$@; then exit 1; fi; done
 test check: $(TESTS)
 clean:
 	@$(RM) $(PROGS) $(TESTS)
