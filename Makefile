@@ -11,6 +11,7 @@ PROGS += withdraw
 PROGS += xattr
 PROGS += mstat
 PROGS += clocks
+PROGS += prime
 TESTS := $(patsubst %,%_test,$(PROGS))
 TEST_SRCS := $(filter %_test.c,$(wildcard *.c))
 CC     ?= gcc

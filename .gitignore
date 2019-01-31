@@ -11,6 +11,7 @@ withdraw
 xattr
 mstat
 clocks
+prime
 *_test
 *.o
 *.~
