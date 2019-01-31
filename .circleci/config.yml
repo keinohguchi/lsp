@@ -12,9 +12,6 @@ workflows:
       - build:
           requires:
             - checkout
-      - run:
-          requires:
-            - checkout
       - test:
           requires:
             - checkout
