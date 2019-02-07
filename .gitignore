@@ -12,6 +12,7 @@ xattr
 mstat
 clocks
 prime
+ls
 *_test
 *.o
 *.~

@@ -12,6 +12,7 @@ PROGS += xattr
 PROGS += mstat
 PROGS += clocks
 PROGS += prime
+PROGS += ls
 TESTS := $(patsubst %,%_test,$(PROGS))
 TEST_SRCS := $(filter %_test.c,$(wildcard *.c))
 CC     ?= gcc
