@@ -6,32 +6,10 @@
 #include <limits.h>
 #include <sys/wait.h>
 
-static char *const fullpath(const char *const cmd)
-{
-	static char buf[LINE_MAX];
-	size_t len;
-	char *endp;
-
-	if (getcwd(buf, sizeof(buf)) == NULL) {
-		perror("getcwd");
-		abort();
-		/* not reached */
-		return NULL;
-	}
-	len = strlen(buf);
-	endp = buf+len;
-	if (snprintf(endp, sizeof(buf)-len, "/%s", cmd) < 0) {
-		perror("snprintf");
-		abort();
-		/* not reached */
-		return NULL;
-	}
-	return buf;
-}
-
 int main()
 {
-	char *const target = fullpath("ls");
+	char path[PATH_MAX];
+	char *const target = realpath("./ls", path);
 	const struct test {
 		const char	*name;
 		char *const	argv[5];
@@ -84,5 +62,3 @@ int main()
 		}
 	}
 }
-
-

@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <getopt.h>
+#include <limits.h>
 
 static const char *progname;
 
@@ -25,6 +26,18 @@ static void usage(FILE *stream, int status, const char *const opts,
 	exit(status);
 }
 
+static int list(const char *const file)
+{
+	char path[PATH_MAX];
+
+	if (realpath(file, path) == NULL) {
+		perror("realpath");
+		return -1;
+	}
+	printf("%s\n", path);
+	return 0;
+}
+
 int main(int argc, char *const argv[])
 {
 	const struct option lopts[] = {
@@ -32,7 +45,7 @@ int main(int argc, char *const argv[])
 		{},
 	};
 	const char *const opts = "h";
-	int opt;
+	int opt, ret;
 
 	progname = argv[0];
 	while ((opt = getopt_long(argc, argv, opts, lopts, NULL)) != -1) {
@@ -46,5 +59,13 @@ int main(int argc, char *const argv[])
 			break;
 		}
 	}
+	if (optind == argc) {
+		ret = list(".");
+	} else
+		while (optind < argc) {
+			ret = list(argv[optind++]);
+			if (ret == -1)
+				return 1;
+		}
 	return 0;
 }
