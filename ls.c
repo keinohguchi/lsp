@@ -14,19 +14,19 @@
 /* ls program context */
 static struct context {
 	const char		*progname;
-	const struct option	lopts[4];
-	const char		*const opts;
 	struct winsize		win;
 	int			all:1;
 	int			list:1;
+	const char		*const opts;
+	const struct option	lopts[];
 } ls = {
-	.lopts = {
+	.opts	= "alh",
+	.lopts	= {
 		{"all",		no_argument,	NULL,	'a'},
 		{"list",	no_argument,	NULL,	'l'},
 		{"help",	no_argument,	NULL,	'h'},
 		{},
 	},
-	.opts	= "alh",
 };
 
 static void usage(FILE *stream, int status)
