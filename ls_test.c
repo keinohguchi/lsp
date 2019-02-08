@@ -21,6 +21,21 @@ int main()
 			.want	= 0,
 		},
 		{
+			.name	= "list option",
+			.argv	= {target, "-l", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "list and all option",
+			.argv	= {target, "-l", "-a", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "all and list option",
+			.argv	= {target, "-a", "-l", NULL},
+			.want	= 0,
+		},
+		{
 			.name	= "all and help option",
 			.argv	= {target, "-a", "-h", NULL},
 			.want	= 0,

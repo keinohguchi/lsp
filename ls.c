@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
 #include <unistd.h>
+#include <errno.h>
 #include <getopt.h>
 #include <limits.h>
 #include <string.h>
@@ -13,30 +13,34 @@
 /* program context */
 static struct context {
 	const char		*progname;
-	const struct option	lopts[3];
+	const struct option	lopts[4];
 	const char		*const opts;
 	struct winsize		win;
-	bool			all;
+	int			all:1;
+	int			list:1;
 } ctx = {
 	.lopts = {
 		{"all",		no_argument,	NULL,	'a'},
+		{"list",	no_argument,	NULL,	'l'},
 		{"help",	no_argument,	NULL,	'h'},
 		{},
 	},
-	.opts	= "ah",
+	.opts	= "alh",
 };
 
 static void usage(const struct context *const ctx, FILE *stream, int status)
 {
 	const struct option *o;
-
 	fprintf(stream, "usage: %s [-%s]\n", ctx->progname, ctx->opts);
 	fprintf(stream, "options:\n");
 	for (o = ctx->lopts; o->name; o++) {
 		fprintf(stream, "\t--%s,-%c:\t", o->name, o->val);
 		switch (o->val) {
 		case 'a':
-			fprintf(stream, "show all files\n");
+			fprintf(stream, "list all files\n");
+			break;
+		case 'l':
+			fprintf(stream, "detailed list\n");
 			break;
 		case 'h':
 			fprintf(stream, "show this message\n");
@@ -69,7 +73,12 @@ static int list(const struct context *const ctx, const char *const file)
 	while ((d = readdir(dir)) != NULL) {
 		if (d->d_name[0] == '.' && !ctx->all)
 			continue;
-		if (total + strlen(d->d_name) + 2 > ctx->win.ws_col-1) {
+		if (ctx->list) {
+			printf("%s\n", d->d_name);
+			continue;
+		}
+		len = strlen(d->d_name);
+		if (total+len+3 > ctx->win.ws_col) {
 			printf("\n");
 			total = 0;
 		}
@@ -81,7 +90,8 @@ static int list(const struct context *const ctx, const char *const file)
 		}
 		total += len;
 	}
-	printf("\n");
+	if (!ctx->list)
+		printf("\n");
 	ret = 0;
 out:
 	if (closedir(dir) == -1) {
@@ -102,7 +112,10 @@ int main(int argc, char *const argv[])
 			usage(&ctx, stdout, EXIT_SUCCESS);
 			break;
 		case 'a':
-			ctx.all = true;
+			ctx.all = 1;
+			break;
+		case 'l':
+			ctx.list = 1;
 			break;
 		case '?':
 		default:
@@ -112,7 +125,7 @@ int main(int argc, char *const argv[])
 	}
 	/* get the window size */
 	ret = ioctl(STDOUT_FILENO, TIOCGWINSZ, &ctx.win);
-	if (ret == -1) {
+	if (ret == -1 && errno != ENOTTY) {
 		perror("ioctl");
 		goto out;
 	}
