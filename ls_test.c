@@ -12,13 +12,38 @@ int main()
 	char *const target = realpath("./ls", path);
 	const struct test {
 		const char	*name;
-		char *const	argv[5];
+		char *const	argv[4];
 		int		want;
 	} *t, tests[] = {
+		{
+			.name	= "all option",
+			.argv	= {target, "-a", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "all and help option",
+			.argv	= {target, "-a", "-h", NULL},
+			.want	= 0,
+		},
 		{
 			.name	= "help option",
 			.argv	= {target, "-h", NULL},
 			.want	= 0,
+		},
+		{
+			.name	= "no argument",
+			.argv	= {target, NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "current directory",
+			.argv	= {target, ".", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "non existent file",
+			.argv	= {target, "some_borgus_file", NULL},
+			.want	= 1,
 		},
 		{}, /* sentry */
 	};
@@ -46,18 +71,19 @@ int main()
 			abort();
 		}
 		if (WIFSIGNALED(status)) {
-			fprintf(stderr, "unexpected signal: %s\n",
-				strsignal(WTERMSIG(status)));
+			fprintf(stderr, "%s: unexpected signal: %s\n",
+				t->name, strsignal(WTERMSIG(status)));
 			return 1;
 		}
 		if (!WIFEXITED(status)) {
-			fprintf(stderr, "unexpected non exit\n");
+			fprintf(stderr, "%s: unexpected non exit\n",
+				t->name);
 			return 1;
 		}
 		if (WEXITSTATUS(status) != t->want) {
 			fprintf(stderr,
-				"unexpected result:\n- want: %d\n-  got: %d\n",
-				t->want, WEXITSTATUS(status));
+				"%s: unexpected result:\n- want: %d\n-  got: %d\n",
+				t->name, t->want, WEXITSTATUS(status));
 			return 1;
 		}
 	}
