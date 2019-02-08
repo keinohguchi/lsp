@@ -9,8 +9,9 @@
 #include <dirent.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 
-/* program context */
+/* ls program context */
 static struct context {
 	const char		*progname;
 	const struct option	lopts[4];
@@ -18,7 +19,7 @@ static struct context {
 	struct winsize		win;
 	int			all:1;
 	int			list:1;
-} ctx = {
+} ls = {
 	.lopts = {
 		{"all",		no_argument,	NULL,	'a'},
 		{"list",	no_argument,	NULL,	'l'},
@@ -28,12 +29,12 @@ static struct context {
 	.opts	= "alh",
 };
 
-static void usage(const struct context *const ctx, FILE *stream, int status)
+static void usage(FILE *stream, int status)
 {
 	const struct option *o;
-	fprintf(stream, "usage: %s [-%s]\n", ctx->progname, ctx->opts);
+	fprintf(stream, "usage: %s [-%s]\n", ls.progname, ls.opts);
 	fprintf(stream, "options:\n");
-	for (o = ctx->lopts; o->name; o++) {
+	for (o = ls.lopts; o->name; o++) {
 		fprintf(stream, "\t--%s,-%c:\t", o->name, o->val);
 		switch (o->val) {
 		case 'a':
@@ -53,17 +54,39 @@ static void usage(const struct context *const ctx, FILE *stream, int status)
 	exit(status);
 }
 
-static int list(const struct context *const ctx, const char *const file)
+static size_t print_file(const char *const file)
 {
-	struct dirent *d;
+	if (!ls.list)
+		return printf("%s  ", file);
+	return printf("%s\n", file);
+}
+
+static int list(const char *const file)
+{
+	struct stat st;
+	struct dirent *dp;
 	size_t len, total;
+	DIR *dir = NULL;
 	char *path;
-	DIR *dir;
 	int ret;
 
 	if ((path = realpath(file, NULL)) == NULL) {
 		perror("realpath");
 		return -1;
+	}
+	ret = lstat(path, &st);
+	if (ret == -1) {
+		perror("stat");
+		goto out;
+	}
+	ret = 0;
+	if (!S_ISDIR(st.st_mode)) {
+		len = print_file(file);
+		if (len < 0)
+			ret = 1;
+		else if (!ls.list)
+			printf("\n");
+		goto out;
 	}
 	ret = -1;
 	if ((dir = opendir(path)) == NULL) {
@@ -71,35 +94,37 @@ static int list(const struct context *const ctx, const char *const file)
 		goto out;
 	}
 	total = 0;
-	while ((d = readdir(dir)) != NULL) {
-		if (d->d_name[0] == '.' && !ctx->all)
+	while ((dp = readdir(dir)) != NULL) {
+		if (dp->d_name[0] == '.' && !ls.all)
 			continue;
-		if (ctx->list) {
-			printf("%s\n", d->d_name);
+		if (ls.list) {
+			printf("%s\n", dp->d_name);
 			continue;
 		}
-		len = strlen(d->d_name);
-		if (total+len+3 > ctx->win.ws_col) {
+		len = strlen(dp->d_name);
+		if (total+len+3 > ls.win.ws_col) {
 			printf("\n");
 			total = 0;
 		}
 		ret = -1;
-		len = printf("%s  ", d->d_name);
+		len = print_file(dp->d_name);
 		if (len < 0) {
 			perror("printf");
 			goto out;
 		}
 		total += len;
 	}
-	if (!ctx->list)
+	if (!ls.list)
 		printf("\n");
 	ret = 0;
 out:
-	if (closedir(dir) == -1) {
-		perror("closedir");
-		return -1;
-	}
-	free(path);
+	if (dir)
+		if (closedir(dir) == -1) {
+			perror("closedir");
+			ret = -1;
+		}
+	if (path)
+		free(path);
 	return ret;
 }
 
@@ -107,36 +132,36 @@ int main(int argc, char *const argv[])
 {
 	int opt, ret;
 
-	ctx.progname = argv[0];
-	while ((opt = getopt_long(argc, argv, ctx.opts, ctx.lopts, NULL)) != -1) {
+	ls.progname = argv[0];
+	while ((opt = getopt_long(argc, argv, ls.opts, ls.lopts, NULL)) != -1) {
 		switch (opt) {
 		case 'h':
-			usage(&ctx, stdout, EXIT_SUCCESS);
+			usage(stdout, EXIT_SUCCESS);
 			break;
 		case 'a':
-			ctx.all = 1;
+			ls.all = 1;
 			break;
 		case 'l':
-			ctx.list = 1;
+			ls.list = 1;
 			break;
 		case '?':
 		default:
-			usage(&ctx, stderr, EXIT_FAILURE);
+			usage(stderr, EXIT_FAILURE);
 			break;
 		}
 	}
 	/* get the window size */
-	ret = ioctl(STDOUT_FILENO, TIOCGWINSZ, &ctx.win);
+	ret = ioctl(STDOUT_FILENO, TIOCGWINSZ, &ls.win);
 	if (ret == -1 && errno != ENOTTY) {
 		perror("ioctl");
 		goto out;
 	}
 	/* let's rock */
 	if (optind == argc)
-		ret = list(&ctx, ".");
+		ret = list(".");
 	else
 		while (optind < argc)
-			if ((ret = list(&ctx, argv[optind++])) == -1)
+			if ((ret = list(argv[optind++])) == -1)
 				goto out;
 out:
 	if (ret != 0)

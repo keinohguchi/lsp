@@ -55,6 +55,11 @@ int main()
 			.want	= 0,
 		},
 		{
+			.name	= "list ls itself",
+			.argv	= {target, "ls", NULL},
+			.want	= 0,
+		},
+		{
 			.name	= "non existent file",
 			.argv	= {target, "some_borgus_file", NULL},
 			.want	= 1,
