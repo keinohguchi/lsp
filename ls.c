@@ -35,7 +35,7 @@ static void usage(FILE *stream, int status)
 	fprintf(stream, "usage: %s [-%s]\n", ls.progname, ls.opts);
 	fprintf(stream, "options:\n");
 	for (o = ls.lopts; o->name; o++) {
-		fprintf(stream, "\t--%s,-%c:\t", o->name, o->val);
+		fprintf(stream, "\t-%c,--%s:\t", o->val, o->name);
 		switch (o->val) {
 		case 'a':
 			fprintf(stream, "list all files\n");
