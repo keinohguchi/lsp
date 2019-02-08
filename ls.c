@@ -55,19 +55,20 @@ static void usage(const struct context *const ctx, FILE *stream, int status)
 
 static int list(const struct context *const ctx, const char *const file)
 {
-	char path[PATH_MAX];
 	struct dirent *d;
 	size_t len, total;
+	char *path;
 	DIR *dir;
 	int ret;
 
-	if (realpath(file, path) == NULL) {
+	if ((path = realpath(file, NULL)) == NULL) {
 		perror("realpath");
 		return -1;
 	}
+	ret = -1;
 	if ((dir = opendir(path)) == NULL) {
 		perror("opendir");
-		return -1;
+		goto out;
 	}
 	total = 0;
 	while ((d = readdir(dir)) != NULL) {
@@ -82,10 +83,10 @@ static int list(const struct context *const ctx, const char *const file)
 			printf("\n");
 			total = 0;
 		}
+		ret = -1;
 		len = printf("%s  ", d->d_name);
 		if (len < 0) {
 			perror("printf");
-			ret = -1;
 			goto out;
 		}
 		total += len;
@@ -98,6 +99,7 @@ out:
 		perror("closedir");
 		return -1;
 	}
+	free(path);
 	return ret;
 }
 
