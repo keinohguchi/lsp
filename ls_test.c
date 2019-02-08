@@ -8,8 +8,7 @@
 
 int main()
 {
-	char path[PATH_MAX];
-	char *const target = realpath("./ls", path);
+	char *const target = realpath("./ls", NULL);
 	const struct test {
 		const char	*name;
 		char *const	argv[4];
@@ -62,9 +61,10 @@ int main()
 		},
 		{}, /* sentry */
 	};
+	int ret;
 
 	for (t = tests; t->name; t++) {
-		int ret, status;
+		int status;
 		pid_t pid;
 
 		pid = fork();
@@ -85,22 +85,27 @@ int main()
 			perror("waitpid");
 			abort();
 		}
+		ret = 1;
 		if (WIFSIGNALED(status)) {
 			fprintf(stderr, "%s: unexpected signal: %s\n",
 				t->name, strsignal(WTERMSIG(status)));
-			return 1;
+			goto out;
 		}
 		if (!WIFEXITED(status)) {
 			fprintf(stderr, "%s: unexpected non exit\n",
 				t->name);
-			return 1;
+			goto out;
 		}
 		if (WEXITSTATUS(status) != t->want) {
 			fprintf(stderr,
 				"%s: unexpected result:\n- want: %d\n-  got: %d\n",
 				t->name, t->want, WEXITSTATUS(status));
-			return 1;
+			goto out;
 		}
+		ret = 0;
 	}
-	return 0;
+out:
+	if (target)
+		free(target);
+	return ret;
 }
