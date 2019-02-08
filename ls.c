@@ -79,16 +79,16 @@ static int list(const char *const file)
 		perror("stat");
 		goto out;
 	}
-	ret = 0;
+	ret = -1;
 	if (!S_ISDIR(st.st_mode)) {
 		len = print_file(file);
 		if (len < 0)
-			ret = 1;
-		else if (!ls.list)
+			goto out;
+		ret = 0;
+		if (!ls.list)
 			printf("\n");
 		goto out;
 	}
-	ret = -1;
 	if ((dir = opendir(path)) == NULL) {
 		perror("opendir");
 		goto out;
