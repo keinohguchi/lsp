@@ -11,8 +11,8 @@
 #include <grp.h>
 #include <time.h>
 #include <sys/types.h>
-#include <sys/ioctl.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
 
 /* ls program context */
 static struct context {
@@ -57,12 +57,33 @@ static void usage(FILE *stream, int status)
 	exit(status);
 }
 
+static char *stmode(const struct stat *restrict st, char *restrict buf, size_t size)
+{
+	size_t len;
+	char type;
+
+	switch (st->st_mode & S_IFMT) {
+	case S_IFBLK:	type = 'b'; break;
+	case S_IFCHR:	type = 'c'; break;
+	case S_IFDIR:	type = 'd'; break;
+	case S_IFIFO:	type = 'p'; break;
+	case S_IFLNK:	type = 'l'; break;
+	case S_IFSOCK:	type = 's'; break;
+	default:	type = '-'; break;
+	}
+	if ((len = snprintf(buf, size, "%c%o", type, st->st_mode&~S_IFMT)) < 0) {
+		perror("snprintf");
+		return NULL;
+	}
+	return buf;
+}
+
 static size_t print_file_long(const char *const file, struct stat *restrict st)
 {
 	size_t len, total = 0;
 	struct passwd *pwd;
 	struct group *grp;
-	char timebuf[BUFSIZ];
+	char buf[BUFSIZ];
 	struct tm tm;
 
 	if (st == NULL) {
@@ -73,7 +94,9 @@ static size_t print_file_long(const char *const file, struct stat *restrict st)
 		}
 		st = &sbuf;
 	}
-	if ((len = printf("%2ld", st->st_nlink)) < 0) {
+	if (stmode(st, buf, sizeof(buf)) == NULL)
+	    return -1;
+	if ((len = printf("%s %ld", buf, st->st_nlink)) < 0) {
 		perror("printf");
 		return -1;
 	}
@@ -110,11 +133,11 @@ static size_t print_file_long(const char *const file, struct stat *restrict st)
 		perror("localtie_r");
 		return -1;
 	}
-	if (strftime(timebuf, sizeof(timebuf), "%b %d %k:%M", &tm) < 0) {
+	if (strftime(buf, sizeof(buf), "%b %d %k:%M", &tm) < 0) {
 		perror("strftime");
 		return -1;
 	}
-	if ((len = printf(" %-s %s\n", timebuf, file)) < 0) {
+	if ((len = printf(" %-s %s\n", buf, file)) < 0) {
 		perror("printf");
 		return -1;
 	}
