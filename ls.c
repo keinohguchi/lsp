@@ -56,8 +56,12 @@ static void usage(FILE *stream, int status)
 
 static size_t print_file(const char *const file)
 {
-	if (!ls.list)
-		return printf("%s  ", file);
+	if (!ls.list) {
+		if (ls.win.ws_col)
+			return printf("%s  ", file);
+		else
+			return printf("%s", file);
+	}
 	return printf("%s\n", file);
 }
 
@@ -151,10 +155,13 @@ int main(int argc, char *const argv[])
 		}
 	}
 	/* get the window size */
-	ret = ioctl(STDOUT_FILENO, TIOCGWINSZ, &ls.win);
-	if (ret == -1 && errno != ENOTTY) {
-		perror("ioctl");
-		goto out;
+	ls.win.ws_col = 0;
+	if (isatty(STDOUT_FILENO)) {
+		ret = ioctl(STDOUT_FILENO, TIOCGWINSZ, &ls.win);
+		if (ret == -1) {
+			perror("ioctl");
+			goto out;
+		}
 	}
 	/* let's rock */
 	if (optind == argc)
