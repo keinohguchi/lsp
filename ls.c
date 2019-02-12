@@ -76,24 +76,24 @@ static size_t print_file_long(const char *const file, struct stat *restrict st)
 	}
 	total += len;
 	if ((pwd = getpwuid(st->st_uid)) != NULL) {
-		if ((len = printf(" %s", pwd->pw_name)) < 0) {
+		if ((len = printf(" %-s", pwd->pw_name)) < 0) {
 			perror("printf");
 			return -1;
 		}
 	} else {
-		if ((len = printf(" %d", st->st_uid)) < 0) {
+		if ((len = printf(" %-d", st->st_uid)) < 0) {
 			perror("printf");
 			return -1;
 		}
 	}
 	total += len;
 	if ((grp = getgrgid(st->st_gid)) != NULL) {
-		if ((len = printf(" %s", grp->gr_name)) < 0) {
+		if ((len = printf(" %-s", grp->gr_name)) < 0) {
 			perror("printf");
 			return -1;
 		}
 	} else {
-		if ((len = printf(" %d", st->st_gid)) < 0) {
+		if ((len = printf(" %-d", st->st_gid)) < 0) {
 			perror("printf");
 			return -1;
 		}
