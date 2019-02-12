@@ -98,6 +98,10 @@ static size_t print_file_long(const char *const file, struct stat *restrict st)
 			return -1;
 		}
 	}
+	if ((len = printf(" %7jd", st->st_size)) < 0) {
+		perror("printf");
+		return -1;
+	}
 	total += len;
 	if ((len = printf(" %s\n", file)) < 0) {
 		perror("printf");
