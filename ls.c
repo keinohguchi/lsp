@@ -9,6 +9,7 @@
 #include <dirent.h>
 #include <pwd.h>
 #include <grp.h>
+#include <time.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
@@ -61,6 +62,8 @@ static size_t print_file_long(const char *const file, struct stat *restrict st)
 	size_t len, total = 0;
 	struct passwd *pwd;
 	struct group *grp;
+	char timebuf[BUFSIZ];
+	struct tm tm;
 
 	if (st == NULL) {
 		struct stat sbuf;
@@ -103,7 +106,15 @@ static size_t print_file_long(const char *const file, struct stat *restrict st)
 		return -1;
 	}
 	total += len;
-	if ((len = printf(" %s\n", file)) < 0) {
+	if (localtime_r(&st->st_mtime, &tm) == NULL) {
+		perror("localtie_r");
+		return -1;
+	}
+	if (strftime(timebuf, sizeof(timebuf), "%b %d %k:%M", &tm) < 0) {
+		perror("strftime");
+		return -1;
+	}
+	if ((len = printf(" %-s %s\n", timebuf, file)) < 0) {
 		perror("printf");
 		return -1;
 	}
