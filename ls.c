@@ -7,6 +7,8 @@
 #include <limits.h>
 #include <string.h>
 #include <dirent.h>
+#include <pwd.h>
+#include <grp.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
@@ -57,6 +59,9 @@ static void usage(FILE *stream, int status)
 static size_t print_file_long(const char *const file, struct stat *restrict st)
 {
 	size_t len, total = 0;
+	struct passwd *pwd;
+	struct group *grp;
+
 	if (st == NULL) {
 		struct stat sbuf;
 		if (lstat(file, &sbuf) == -1) {
@@ -70,16 +75,35 @@ static size_t print_file_long(const char *const file, struct stat *restrict st)
 		return -1;
 	}
 	total += len;
-	if ((len = printf(" %s", file)) < 0) {
+	if ((pwd = getpwuid(st->st_uid)) != NULL) {
+		if ((len = printf(" %s", pwd->pw_name)) < 0) {
+			perror("printf");
+			return -1;
+		}
+	} else {
+		if ((len = printf(" %d", st->st_uid)) < 0) {
+			perror("printf");
+			return -1;
+		}
+	}
+	total += len;
+	if ((grp = getgrgid(st->st_gid)) != NULL) {
+		if ((len = printf(" %s", grp->gr_name)) < 0) {
+			perror("printf");
+			return -1;
+		}
+	} else {
+		if ((len = printf(" %d", st->st_gid)) < 0) {
+			perror("printf");
+			return -1;
+		}
+	}
+	total += len;
+	if ((len = printf(" %s\n", file)) < 0) {
 		perror("printf");
 		return -1;
 	}
-	total += len;
-	if ((len = printf("\n")) < 0) {
-	    perror("printf");
-	    return -1;
-	}
-	return total + len;
+	return total += len;
 }
 
 static size_t print_file(const char *const file, struct stat *restrict st)
