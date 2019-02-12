@@ -54,21 +54,46 @@ static void usage(FILE *stream, int status)
 	exit(status);
 }
 
-static size_t print_file(const char *const file)
+static size_t print_file_long(const char *const file, struct stat *restrict st)
 {
-	if (!ls.list) {
-		if (ls.win.ws_col)
-			return printf("%s  ", file);
-		else
-			return printf("%s", file);
+	size_t len, total = 0;
+	if (st == NULL) {
+		struct stat sbuf;
+		if (lstat(file, &sbuf) == -1) {
+			perror("lstat");
+			return -1;
+		}
+		st = &sbuf;
 	}
-	return printf("%s\n", file);
+	if ((len = printf("%2ld", st->st_nlink)) < 0) {
+		perror("printf");
+		return -1;
+	}
+	total += len;
+	if ((len = printf(" %s", file)) < 0) {
+		perror("printf");
+		return -1;
+	}
+	total += len;
+	if ((len = printf("\n")) < 0) {
+	    perror("printf");
+	    return -1;
+	}
+	return total + len;
+}
+
+static size_t print_file(const char *const file, struct stat *restrict st)
+{
+	if (ls.list)
+		return print_file_long(file, st);
+	else
+		return printf("%s%s", file, ls.win.ws_col ? "  " : "\n");
 }
 
 static int list(const char *const file)
 {
 	struct stat st;
-	struct dirent *dp;
+	struct dirent *d;
 	size_t len, total;
 	DIR *dir = NULL;
 	char *path;
@@ -83,43 +108,41 @@ static int list(const char *const file)
 		perror("stat");
 		goto out;
 	}
-	ret = -1;
 	if (!S_ISDIR(st.st_mode)) {
-		len = print_file(file);
-		if (len < 0)
+		ret = -1;
+		if (print_file(file, &st) < 0)
 			goto out;
-		ret = 0;
 		if (!ls.list)
-			printf("\n");
+			if (printf("\n") < 0)
+				goto out;
+		ret = 0;
 		goto out;
 	}
+	ret = -1;
 	if ((dir = opendir(path)) == NULL) {
 		perror("opendir");
 		goto out;
 	}
 	total = 0;
-	while ((dp = readdir(dir)) != NULL) {
-		if (dp->d_name[0] == '.' && !ls.all)
+	while ((d = readdir(dir)) != NULL) {
+		if (d->d_name[0] == '.' && !ls.all)
 			continue;
-		if (ls.list) {
-			printf("%s\n", dp->d_name);
+		ret = -1;
+		if ((len = print_file(d->d_name, NULL)) < 0)
+			goto out;
+		if (ls.list)
 			continue;
-		}
-		len = strlen(dp->d_name);
-		if (total+len+3 > ls.win.ws_col) {
-			printf("\n");
+		total += len;
+		if (ls.win.ws_col && total+1 >= ls.win.ws_col) {
+			if (printf("\n") < 0)
+				goto out;
 			total = 0;
 		}
-		ret = -1;
-		len = print_file(dp->d_name);
-		if (len < 0) {
-			perror("printf");
-			goto out;
-		}
-		total += len;
 	}
-	if (!ls.list)
-		printf("\n");
+	ret = -1;
+	if (!ls.list && ls.win.ws_col)
+		if (printf("\n") < 0)
+			goto out;
 	ret = 0;
 out:
 	if (dir)
