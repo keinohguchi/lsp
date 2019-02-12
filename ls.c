@@ -57,12 +57,12 @@ static void usage(FILE *stream, int status)
 	exit(status);
 }
 
-static char *stmode(const struct stat *restrict st, char *restrict buf, size_t size)
+static char *stmode(mode_t mode, char *restrict buf, size_t size)
 {
-	size_t len;
+	const char *const rwx[] = {"---", "--x", "-w-", "-wx", "r--", "r-x", "rw-", "rwx"};
+	const char *u, *g, *o;
 	char type;
-
-	switch (st->st_mode & S_IFMT) {
+	switch (mode&S_IFMT) {
 	case S_IFBLK:	type = 'b'; break;
 	case S_IFCHR:	type = 'c'; break;
 	case S_IFDIR:	type = 'd'; break;
@@ -71,10 +71,20 @@ static char *stmode(const struct stat *restrict st, char *restrict buf, size_t s
 	case S_IFSOCK:	type = 's'; break;
 	default:	type = '-'; break;
 	}
-	if ((len = snprintf(buf, size, "%c%o", type, st->st_mode&~S_IFMT)) < 0) {
+	u = rwx[mode>>6&7];
+	g = rwx[mode>>3&7];
+	o = rwx[mode&7];
+	if (snprintf(buf, size, "%c%3s%3s%3s", type, u, g, o) < 0) {
 		perror("snprintf");
 		return NULL;
 	}
+	/* sticky bits */
+	if (mode&S_ISUID)
+		buf[3] = mode&S_IXUSR ? 's' : 'S';
+	if (mode&S_ISGID)
+		buf[6] = mode&S_IXGRP ? 's' : 'S';
+	if (mode&S_ISVTX)
+		buf[9] = mode&S_IXOTH ? 't' : 'T';
 	return buf;
 }
 
@@ -94,7 +104,7 @@ static size_t print_file_long(const char *const file, struct stat *restrict st)
 		}
 		st = &sbuf;
 	}
-	if (stmode(st, buf, sizeof(buf)) == NULL)
+	if (stmode(st->st_mode, buf, sizeof(buf)) == NULL)
 	    return -1;
 	if ((len = printf("%s %ld", buf, st->st_nlink)) < 0) {
 		perror("printf");
