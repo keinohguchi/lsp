@@ -13,6 +13,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
+#include <sys/sysmacros.h>
 
 /* ls program context */
 static int version_flag = 0;
@@ -126,7 +127,6 @@ static size_t print_file_long(const char *const base, const char *const file,
 
 	if (st == NULL) {
 		struct stat sbuf;
-
 		if (snprintf(buf, sizeof(buf), "%s/%s", base, file) < 0) {
 			perror("snprintf");
 			return -1;
@@ -145,31 +145,39 @@ static size_t print_file_long(const char *const base, const char *const file,
 	}
 	total += len;
 	if ((pwd = getpwuid(st->st_uid)) != NULL) {
-		if ((len = printf(" %-s", pwd->pw_name)) < 0) {
+		if ((len = printf(" %-4s", pwd->pw_name)) < 0) {
 			perror("printf");
 			return -1;
 		}
 	} else {
-		if ((len = printf(" %-d", st->st_uid)) < 0) {
+		if ((len = printf(" %-4d", st->st_uid)) < 0) {
 			perror("printf");
 			return -1;
 		}
 	}
 	total += len;
 	if ((grp = getgrgid(st->st_gid)) != NULL) {
-		if ((len = printf(" %-s", grp->gr_name)) < 0) {
+		if ((len = printf(" %-8s", grp->gr_name)) < 0) {
 			perror("printf");
 			return -1;
 		}
 	} else {
-		if ((len = printf(" %-d", st->st_gid)) < 0) {
+		if ((len = printf(" %-8d", st->st_gid)) < 0) {
 			perror("printf");
 			return -1;
 		}
 	}
-	if ((len = printf(" %7jd", st->st_size)) < 0) {
-		perror("printf");
-		return -1;
+	if (S_ISCHR(st->st_mode) || S_ISBLK(st->st_mode)) {
+		if ((len = printf(" %4d,%4d", major(st->st_rdev),
+				  minor(st->st_rdev))) < 0) {
+			perror("printf");
+			return -1;
+		}
+	} else {
+		if ((len = printf(" %9jd", st->st_size)) < 0) {
+			perror("printf");
+			return -1;
+		}
 	}
 	total += len;
 	if (localtime_r(&st->st_mtime, &tm) == NULL) {

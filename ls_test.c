@@ -95,6 +95,11 @@ int main()
 			.want	= 0,
 		},
 		{
+			.name	= "ls -l /dev/zero",
+			.argv	= {target, "-l", "/dev/zero", NULL},
+			.want	= 0,
+		},
+		{
 			.name	= "non existent file",
 			.argv	= {target, "some_borgus_file", NULL},
 			.want	= 1,
