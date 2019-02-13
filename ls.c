@@ -139,7 +139,7 @@ static size_t print_file_long(const char *const base, const char *const file,
 	}
 	if (stmode(st->st_mode, buf, sizeof(buf)) == NULL)
 	    return -1;
-	if ((len = printf("%s %ld", buf, st->st_nlink)) < 0) {
+	if ((len = printf("%s %3ld", buf, st->st_nlink)) < 0) {
 		perror("printf");
 		return -1;
 	}
@@ -181,7 +181,7 @@ static size_t print_file_long(const char *const base, const char *const file,
 	}
 	total += len;
 	if (localtime_r(&st->st_mtime, &tm) == NULL) {
-		perror("localtie_r");
+		perror("localtime_r");
 		return -1;
 	}
 	if (strftime(buf, sizeof(buf), "%b %d %k:%M", &tm) < 0) {
