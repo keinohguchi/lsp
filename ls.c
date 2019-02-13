@@ -23,7 +23,7 @@ static struct context {
 	struct winsize		win;
 	int			all:1;
 	int			list:1;
-	int			reverse:1;
+	int			(*cmp)(const void *, const void *);
 	const char		*const version;
 	const char		*const opts;
 	const struct option	lopts[];
@@ -243,21 +243,8 @@ out:
 	return dlist;
 }
 
-static int filecmp(const void *file1, const void *file2)
-{
-	const struct dirent *a = file1, *b = file2;
-	return strcmp(a->d_name, b->d_name);
-}
-
-static int rfilecmp(const void *file1, const void *file2)
-{
-	const struct dirent *a = file2, *b = file1;
-	return strcmp(a->d_name, b->d_name);
-}
-
 static int list(const char *const file)
 {
-	int (*cmp)(const void *, const void *) = filecmp;
 	struct dirent *dlist;
 	struct stat st;
 	size_t nr, len, total;
@@ -287,9 +274,7 @@ static int list(const char *const file)
 	dlist = read_directory(file, &nr);
 	if (dlist == NULL)
 		goto out;
-	if (ls.reverse)
-		cmp = rfilecmp;
-	qsort(dlist, nr, sizeof(struct dirent), cmp);
+	qsort(dlist, nr, sizeof(struct dirent), ls.cmp);
 	total = 0;
 	for (i = 0; i < nr; i++) {
 		if (dlist[i].d_name[0] == '.' && !ls.all)
@@ -319,11 +304,24 @@ out:
 	return ret;
 }
 
+static int filecmp(const void *file1, const void *file2)
+{
+	const struct dirent *a = file1, *b = file2;
+	return strcmp(a->d_name, b->d_name);
+}
+
+static int rfilecmp(const void *file1, const void *file2)
+{
+	const struct dirent *a = file2, *b = file1;
+	return strcmp(a->d_name, b->d_name);
+}
+
 int main(int argc, char *const argv[])
 {
 	int i, opt, ret;
 
 	ls.progname = argv[0];
+	ls.cmp = filecmp;
 	while ((opt = getopt_long(argc, argv, ls.opts, ls.lopts, &i)) != -1) {
 		switch (opt) {
 		case 0:
@@ -343,7 +341,7 @@ int main(int argc, char *const argv[])
 			ls.list = 1;
 			break;
 		case 'r':
-			ls.reverse = 1;
+			ls.cmp = rfilecmp;
 			break;
 		case '?':
 		default:
