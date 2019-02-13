@@ -64,12 +64,11 @@ static void usage(FILE *stream, int status)
 			switch (o->name[0]) {
 			case 'v':
 				fprintf(stream, "show version information\n");
-				break;
+				continue;
 			case 'h':
 				fprintf(stream, "\tshow this message\n");
-				break;
+				continue;
 			}
-			break;
 		default:
 			fprintf(stream, "%s option\n", o->name);
 			break;
@@ -220,17 +219,17 @@ static int list(const char *const file)
 	while ((d = readdir(dir)) != NULL) {
 		if (d->d_name[0] == '.' && !ls.all)
 			continue;
+		if (ls.win.ws_col && total+strlen(d->d_name)+3 >= ls.win.ws_col) {
+			if (printf("\n") < 0)
+				goto out;
+			total = 0;
+		}
 		ret = -1;
 		if ((len = print_file(d->d_name, NULL)) < 0)
 			goto out;
 		if (ls.list)
 			continue;
 		total += len;
-		if (ls.win.ws_col && total+1 >= ls.win.ws_col) {
-			if (printf("\n") < 0)
-				goto out;
-			total = 0;
-		}
 	}
 	ret = -1;
 	if (!ls.list && ls.win.ws_col)
