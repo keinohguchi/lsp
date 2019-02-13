@@ -201,7 +201,7 @@ static size_t print_file(const char *const base, const char *const file,
 	if (ls.list)
 		return print_file_long(base, file, st);
 	else
-		return printf("%s%s", file, ls.win.ws_col ? "  " : "\n");
+		return printf("%-20s%s", file, ls.win.ws_col ? "" : "\n");
 }
 
 static struct dirent *read_directory(const char *const path, size_t *nr)
