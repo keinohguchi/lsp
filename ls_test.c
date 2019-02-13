@@ -11,7 +11,7 @@ int main()
 	char *const target = realpath("./ls", NULL);
 	const struct test {
 		const char	*name;
-		char *const	argv[4];
+		char *const	argv[5];
 		int		want;
 	} *t, tests[] = {
 		{
@@ -25,6 +25,11 @@ int main()
 			.want	= 0,
 		},
 		{
+			.name	= "reverse option",
+			.argv	= {target, "-r", NULL},
+			.want	= 0,
+		},
+		{
 			.name	= "list and all option",
 			.argv	= {target, "-l", "-a", NULL},
 			.want	= 0,
@@ -35,8 +40,23 @@ int main()
 			.want	= 0,
 		},
 		{
+			.name	= "all and list option",
+			.argv	= {target, "-a", "-l", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "all, list, and reverse option",
+			.argv	= {target, "-a", "-l", "-r", NULL},
+			.want	= 0,
+		},
+		{
 			.name	= "all and list combined option",
 			.argv	= {target, "-al", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "all, list, and reverse combined option",
+			.argv	= {target, "-alr", NULL},
 			.want	= 0,
 		},
 		{

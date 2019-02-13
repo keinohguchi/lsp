@@ -22,15 +22,17 @@ static struct context {
 	struct winsize		win;
 	int			all:1;
 	int			list:1;
+	int			reverse:1;
 	const char		*const version;
 	const char		*const opts;
 	const struct option	lopts[];
 } ls = {
-	.version	= "1.0.1",
-	.opts		= "al",
+	.version	= "1.0.2",
+	.opts		= "alr",
 	.lopts		= {
 			{"all",		no_argument,	NULL,		'a'},
 			{"list",	no_argument,	NULL,		'l'},
+			{"reverse",	no_argument,	NULL,		'r'},
 			{"version",	no_argument,	&version_flag,	1},
 			{"help",	no_argument,	&help_flag,	1},
 			{},
@@ -59,6 +61,9 @@ static void usage(FILE *stream, int status)
 			break;
 		case 'l':
 			fprintf(stream, "detailed list\n");
+			break;
+		case 'r':
+			fprintf(stream, "reverse list\n");
 			break;
 		case 1:
 			switch (o->name[0]) {
@@ -227,8 +232,15 @@ static int filecmp(const void *file1, const void *file2)
 	return strcmp(a->d_name, b->d_name);
 }
 
+static int rfilecmp(const void *file1, const void *file2)
+{
+	const struct dirent *a = file2, *b = file1;
+	return strcmp(a->d_name, b->d_name);
+}
+
 static int list(const char *const file)
 {
+	int (*cmp)(const void *, const void *) = filecmp;
 	struct dirent *dlist;
 	struct stat st;
 	size_t nr, len, total;
@@ -258,7 +270,9 @@ static int list(const char *const file)
 	dlist = read_directory(file, &nr);
 	if (dlist == NULL)
 		goto out;
-	qsort(dlist, nr, sizeof(struct dirent), filecmp);
+	if (ls.reverse)
+		cmp = rfilecmp;
+	qsort(dlist, nr, sizeof(struct dirent), cmp);
 	total = 0;
 	for (i = 0; i < nr; i++) {
 		if (dlist[i].d_name[0] == '.' && !ls.all)
@@ -310,6 +324,9 @@ int main(int argc, char *const argv[])
 			break;
 		case 'l':
 			ls.list = 1;
+			break;
+		case 'r':
+			ls.reverse = 1;
 			break;
 		case '?':
 		default:
