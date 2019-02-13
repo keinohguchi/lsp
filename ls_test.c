@@ -35,13 +35,23 @@ int main()
 			.want	= 0,
 		},
 		{
+			.name	= "all and list combined option",
+			.argv	= {target, "-al", NULL},
+			.want	= 0,
+		},
+		{
 			.name	= "all and help option",
-			.argv	= {target, "-a", "-h", NULL},
+			.argv	= {target, "-a", "--help", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "version option",
+			.argv	= {target, "--version", NULL},
 			.want	= 0,
 		},
 		{
 			.name	= "help option",
-			.argv	= {target, "-h", NULL},
+			.argv	= {target, "--help", NULL},
 			.want	= 0,
 		},
 		{

@@ -15,22 +15,33 @@
 #include <sys/ioctl.h>
 
 /* ls program context */
+static int version_flag = 0;
+static int help_flag = 0;
 static struct context {
 	const char		*progname;
 	struct winsize		win;
 	int			all:1;
 	int			list:1;
+	const char		*const version;
 	const char		*const opts;
 	const struct option	lopts[];
 } ls = {
-	.opts	= "alh",
-	.lopts	= {
-		{"all",		no_argument,	NULL,	'a'},
-		{"list",	no_argument,	NULL,	'l'},
-		{"help",	no_argument,	NULL,	'h'},
-		{},
+	.version	= "1.0.0",
+	.opts		= "al",
+	.lopts		= {
+			{"all",		no_argument,	NULL,		'a'},
+			{"list",	no_argument,	NULL,		'l'},
+			{"version",	no_argument,	&version_flag,	1},
+			{"help",	no_argument,	&help_flag,	1},
+			{},
 	},
 };
+
+static void version(FILE *stream)
+{
+	fprintf(stream, "%s version %s\n", ls.progname, ls.version);
+	exit(EXIT_SUCCESS);
+}
 
 static void usage(FILE *stream, int status)
 {
@@ -38,7 +49,10 @@ static void usage(FILE *stream, int status)
 	fprintf(stream, "usage: %s [-%s]\n", ls.progname, ls.opts);
 	fprintf(stream, "options:\n");
 	for (o = ls.lopts; o->name; o++) {
-		fprintf(stream, "\t-%c,--%s:\t", o->val, o->name);
+		fprintf(stream, "\t");
+		if (!o->flag)
+			fprintf(stream, "-%c,", o->val);
+		fprintf(stream, "--%s:\t", o->name);
 		switch (o->val) {
 		case 'a':
 			fprintf(stream, "list all files\n");
@@ -46,8 +60,15 @@ static void usage(FILE *stream, int status)
 		case 'l':
 			fprintf(stream, "detailed list\n");
 			break;
-		case 'h':
-			fprintf(stream, "show this message\n");
+		case 1:
+			switch (o->name[0]) {
+			case 'v':
+				fprintf(stream, "show version information\n");
+				break;
+			case 'h':
+				fprintf(stream, "\tshow this message\n");
+				break;
+			}
 			break;
 		default:
 			fprintf(stream, "%s option\n", o->name);
@@ -229,13 +250,20 @@ out:
 
 int main(int argc, char *const argv[])
 {
-	int opt, ret;
+	int i, opt, ret;
 
 	ls.progname = argv[0];
-	while ((opt = getopt_long(argc, argv, ls.opts, ls.lopts, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, ls.opts, ls.lopts, &i)) != -1) {
 		switch (opt) {
-		case 'h':
-			usage(stdout, EXIT_SUCCESS);
+		case 0:
+			switch (ls.lopts[i].name[0]) {
+			case 'v':
+				version(stdout);
+				break;
+			case 'h':
+				usage(stdout, EXIT_SUCCESS);
+				break;
+			}
 			break;
 		case 'a':
 			ls.all = 1;
