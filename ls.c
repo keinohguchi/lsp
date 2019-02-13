@@ -26,7 +26,7 @@ static struct context {
 	const char		*const opts;
 	const struct option	lopts[];
 } ls = {
-	.version	= "1.0.0",
+	.version	= "1.0.1",
 	.opts		= "al",
 	.lopts		= {
 			{"all",		no_argument,	NULL,		'a'},
@@ -182,14 +182,50 @@ static size_t print_file(const char *const file, struct stat *restrict st)
 		return printf("%s%s", file, ls.win.ws_col ? "  " : "\n");
 }
 
+static struct dirent *read_directory(const char *const path)
+{
+	struct dirent *d, *dlist;
+	size_t nr = 8;
+	DIR *dir;
+	int i;
+
+	if ((dir = opendir(path)) == NULL) {
+		perror("opendir");
+		return NULL;
+	}
+	dlist = calloc(nr, sizeof(struct dirent));
+	if (dlist == NULL) {
+		perror("calloc");
+		goto out;
+	}
+	i = 0;
+	while ((d = readdir(dir)) != NULL) {
+		if (i >= nr) {
+			nr *= 2;
+			dlist = realloc(dlist, sizeof(struct dirent)*nr);
+			if (dlist == NULL) {
+				perror("realloc");
+				goto out;
+			}
+		}
+		dlist[i++] = *d;
+	}
+	dlist[i].d_name[0] = 0;
+out:
+	if (dir)
+		if (closedir(dir) == -1) {
+			perror("closedir");
+		}
+	return dlist;
+}
+
 static int list(const char *const file)
 {
+	struct dirent *dlist;
 	struct stat st;
-	struct dirent *d;
 	size_t len, total;
-	DIR *dir = NULL;
 	char *path;
-	int ret;
+	int ret, i;
 
 	if ((path = realpath(file, NULL)) == NULL) {
 		perror("realpath");
@@ -211,21 +247,20 @@ static int list(const char *const file)
 		goto out;
 	}
 	ret = -1;
-	if ((dir = opendir(path)) == NULL) {
-		perror("opendir");
+	dlist = read_directory(file);
+	if (dlist == NULL)
 		goto out;
-	}
 	total = 0;
-	while ((d = readdir(dir)) != NULL) {
-		if (d->d_name[0] == '.' && !ls.all)
+	for (i = 0; dlist[i].d_name[0]; i++) {
+		if (dlist[i].d_name[0] == '.' && !ls.all)
 			continue;
-		if (ls.win.ws_col && total+strlen(d->d_name)+3 >= ls.win.ws_col) {
+		if (ls.win.ws_col && total+strlen(dlist[i].d_name)+3 >= ls.win.ws_col) {
 			if (printf("\n") < 0)
 				goto out;
 			total = 0;
 		}
 		ret = -1;
-		if ((len = print_file(d->d_name, NULL)) < 0)
+		if ((len = print_file(dlist[i].d_name, NULL)) < 0)
 			goto out;
 		if (ls.list)
 			continue;
@@ -237,11 +272,8 @@ static int list(const char *const file)
 			goto out;
 	ret = 0;
 out:
-	if (dir)
-		if (closedir(dir) == -1) {
-			perror("closedir");
-			ret = -1;
-		}
+	if (dlist)
+		free(dlist);
 	if (path)
 		free(path);
 	return ret;
