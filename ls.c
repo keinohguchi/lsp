@@ -84,7 +84,9 @@ static void usage(FILE *stream, int status)
 
 static char *stmode(mode_t mode, char *restrict buf, size_t size)
 {
-	const char *const rwx[] = {"---", "--x", "-w-", "-wx", "r--", "r-x", "rw-", "rwx"};
+	const char *const rwx[] = {
+		"---", "--x", "-w-", "-wx", "r--", "r-x", "rw-", "rwx",
+	};
 	const char *u, *g, *o;
 	char type;
 	switch (mode&S_IFMT) {
@@ -113,7 +115,8 @@ static char *stmode(mode_t mode, char *restrict buf, size_t size)
 	return buf;
 }
 
-static size_t print_file_long(const char *const file, struct stat *restrict st)
+static size_t print_file_long(const char *const base, const char *const file,
+			      struct stat *restrict st)
 {
 	size_t len, total = 0;
 	struct passwd *pwd;
@@ -123,7 +126,12 @@ static size_t print_file_long(const char *const file, struct stat *restrict st)
 
 	if (st == NULL) {
 		struct stat sbuf;
-		if (lstat(file, &sbuf) == -1) {
+
+		if (snprintf(buf, sizeof(buf), "%s/%s", base, file) < 0) {
+			perror("snprintf");
+			return -1;
+		}
+		if (lstat(buf, &sbuf) == -1) {
 			perror("lstat");
 			return -1;
 		}
@@ -179,10 +187,11 @@ static size_t print_file_long(const char *const file, struct stat *restrict st)
 	return total += len;
 }
 
-static size_t print_file(const char *const file, struct stat *restrict st)
+static size_t print_file(const char *const base, const char *const file,
+			 struct stat *restrict st)
 {
 	if (ls.list)
-		return print_file_long(file, st);
+		return print_file_long(base, file, st);
 	else
 		return printf("%s%s", file, ls.win.ws_col ? "  " : "\n");
 }
@@ -253,12 +262,12 @@ static int list(const char *const file)
 	}
 	ret = lstat(path, &st);
 	if (ret == -1) {
-		perror("stat");
+		perror("lstat");
 		goto out;
 	}
 	if (!S_ISDIR(st.st_mode)) {
 		ret = -1;
-		if (print_file(file, &st) < 0)
+		if (print_file("./", file, &st) < 0)
 			goto out;
 		if (!ls.list)
 			if (printf("\n") < 0)
@@ -283,7 +292,7 @@ static int list(const char *const file)
 			total = 0;
 		}
 		ret = -1;
-		if ((len = print_file(dlist[i].d_name, NULL)) < 0)
+		if ((len = print_file(path, dlist[i].d_name, NULL)) < 0)
 			goto out;
 		if (ls.list)
 			continue;

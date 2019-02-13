@@ -85,6 +85,11 @@ int main()
 			.want	= 0,
 		},
 		{
+			.name	= "root directory",
+			.argv	= {target, "/", NULL},
+			.want	= 0,
+		},
+		{
 			.name	= "list ls itself",
 			.argv	= {target, "ls", NULL},
 			.want	= 0,
