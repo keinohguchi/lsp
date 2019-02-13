@@ -28,7 +28,7 @@ static struct context {
 	const char		*const opts;
 	const struct option	lopts[];
 } ls = {
-	.version	= "1.0.2",
+	.version	= "1.0.3",
 	.opts		= "alr",
 	.lopts		= {
 			{"all",		no_argument,	NULL,		'a'},
