@@ -182,27 +182,29 @@ static size_t print_file(const char *const file, struct stat *restrict st)
 		return printf("%s%s", file, ls.win.ws_col ? "  " : "\n");
 }
 
-static struct dirent *read_directory(const char *const path)
+static struct dirent *read_directory(const char *const path, size_t *nr)
 {
 	struct dirent *d, *dlist;
-	size_t nr = 8;
+	size_t max = 8;
 	DIR *dir;
 	int i;
 
 	if ((dir = opendir(path)) == NULL) {
 		perror("opendir");
+		*nr = 0;
 		return NULL;
 	}
-	dlist = calloc(nr, sizeof(struct dirent));
+	dlist = calloc(max, sizeof(struct dirent));
 	if (dlist == NULL) {
 		perror("calloc");
+		*nr = 0;
 		goto out;
 	}
 	i = 0;
 	while ((d = readdir(dir)) != NULL) {
-		if (i >= nr) {
-			nr *= 2;
-			dlist = realloc(dlist, sizeof(struct dirent)*nr);
+		if (i >= max) {
+			max *= 2;
+			dlist = realloc(dlist, sizeof(struct dirent)*max);
 			if (dlist == NULL) {
 				perror("realloc");
 				goto out;
@@ -210,7 +212,7 @@ static struct dirent *read_directory(const char *const path)
 		}
 		dlist[i++] = *d;
 	}
-	dlist[i].d_name[0] = 0;
+	*nr = i;
 out:
 	if (dir)
 		if (closedir(dir) == -1) {
@@ -219,11 +221,17 @@ out:
 	return dlist;
 }
 
+static int filecmp(const void *file1, const void *file2)
+{
+	const struct dirent *a = file1, *b = file2;
+	return strcmp(a->d_name, b->d_name);
+}
+
 static int list(const char *const file)
 {
 	struct dirent *dlist;
 	struct stat st;
-	size_t len, total;
+	size_t nr, len, total;
 	char *path;
 	int ret, i;
 
@@ -247,11 +255,12 @@ static int list(const char *const file)
 		goto out;
 	}
 	ret = -1;
-	dlist = read_directory(file);
+	dlist = read_directory(file, &nr);
 	if (dlist == NULL)
 		goto out;
+	qsort(dlist, nr, sizeof(struct dirent), filecmp);
 	total = 0;
-	for (i = 0; dlist[i].d_name[0]; i++) {
+	for (i = 0; i < nr; i++) {
 		if (dlist[i].d_name[0] == '.' && !ls.all)
 			continue;
 		if (ls.win.ws_col && total+strlen(dlist[i].d_name)+3 >= ls.win.ws_col) {
