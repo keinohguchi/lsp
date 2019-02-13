@@ -32,7 +32,7 @@ static struct context {
 	.opts		= "alr",
 	.lopts		= {
 			{"all",		no_argument,	NULL,		'a'},
-			{"list",	no_argument,	NULL,		'l'},
+			{"long",	no_argument,	NULL,		'l'},
 			{"reverse",	no_argument,	NULL,		'r'},
 			{"version",	no_argument,	&version_flag,	1},
 			{"help",	no_argument,	&help_flag,	1},
@@ -58,21 +58,23 @@ static void usage(FILE *stream, int status)
 		fprintf(stream, "--%s:\t", o->name);
 		switch (o->val) {
 		case 'a':
-			fprintf(stream, "list all files\n");
+			fprintf(stream,
+				"do not ignore entries starting with .\n");
 			break;
 		case 'l':
-			fprintf(stream, "detailed list\n");
+			fprintf(stream, "use a long listing format\n");
 			break;
 		case 'r':
-			fprintf(stream, "reverse list\n");
+			fprintf(stream, "reverse order while sorting\n");
 			break;
 		case 1:
 			switch (o->name[0]) {
 			case 'v':
-				fprintf(stream, "show version information\n");
+				fprintf(stream,
+					"output version information and exit\n");
 				continue;
 			case 'h':
-				fprintf(stream, "\tshow this message\n");
+				fprintf(stream, "\tdisplay this help and exit\n");
 				continue;
 			}
 		default:
