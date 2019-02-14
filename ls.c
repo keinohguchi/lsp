@@ -306,8 +306,6 @@ static int list(const char *const file)
 			goto out;
 	ret = 0;
 out:
-	if (dlist)
-		free(dlist);
 	return ret;
 }
 
