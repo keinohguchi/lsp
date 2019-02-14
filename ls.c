@@ -254,13 +254,13 @@ out:
 
 static int list(const char *const file)
 {
+	char path[PATH_MAX];
 	struct dirent *dlist;
 	struct stat st;
 	size_t nr, len, total;
-	char *path;
 	int ret, i;
 
-	if ((path = realpath(file, NULL)) == NULL) {
+	if (realpath(file, path) == NULL) {
 		perror("realpath");
 		return -1;
 	}
@@ -308,8 +308,6 @@ static int list(const char *const file)
 out:
 	if (dlist)
 		free(dlist);
-	if (path)
-		free(path);
 	return ret;
 }
 
