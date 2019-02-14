@@ -213,15 +213,14 @@ static struct dirent *read_directory(const char *const path, size_t *nr)
 	DIR *dir;
 	int i;
 
+	*nr = 0;
 	if ((dir = opendir(path)) == NULL) {
 		perror("opendir");
-		*nr = 0;
 		return NULL;
 	}
 	dlist = calloc(max, sizeof(struct dirent));
 	if (dlist == NULL) {
 		perror("calloc");
-		*nr = 0;
 		goto out;
 	}
 	i = 0;
