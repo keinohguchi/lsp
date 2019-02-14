@@ -13,6 +13,7 @@ PROGS += mstat
 PROGS += clocks
 PROGS += prime
 PROGS += ls
+PROGS += orphan
 TESTS := $(patsubst %,%_test,$(PROGS))
 TEST_SRCS := $(filter %_test.c,$(wildcard *.c))
 CC     ?= gcc

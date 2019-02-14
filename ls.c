@@ -241,6 +241,9 @@ out:
 	if (dir)
 		if (closedir(dir) == -1) {
 			perror("closedir");
+			if (dlist)
+				free(dlist);
+			dlist = NULL;
 		}
 	return dlist;
 }
