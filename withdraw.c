@@ -127,8 +127,7 @@ int main(int argc, char *argv[])
 	};
 	struct withdrawer *warg, *wargs, *wret;
 	struct account *account;
-	unsigned int deposit, withdraw;
-	long int nr, i;
+	long deposit, withdraw, nr, i;
 	int ret, opt;
 
 	/* command line option handling */
