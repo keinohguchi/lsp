@@ -14,8 +14,8 @@ PROGS += clocks
 PROGS += prime
 PROGS += ls
 PROGS += orphan
-TESTS := $(patsubst %,%_test,$(PROGS))
 TEST_SRCS := $(filter %_test.c,$(wildcard *.c))
+TESTS := $(patsubst %.c,%,$(TEST_SRCS))
 CC     ?= gcc
 CFLAGS += -Wall
 CFLAGS += -Werror
@@ -27,19 +27,15 @@ all: $(PROGS)
 help: $(PROGS)
 	@for i in $^; do if ! ./$$i --$@; then exit 1; fi; done
 test check: $(TESTS)
+$(TESTS): $(PROGS) $(TEST_SRCS)
+	@$(CC) $(CFLAGS) -o $@ $@.c
+	@printf "$@:\t"
+	@if ./$@>/dev/null 2>&1; then\
+		echo PASS;           \
+	else                         \
+		echo FAIL; exit 1;   \
+	fi
 clean:
 	@$(RM) $(PROGS) $(TESTS)
 %: %.c
 	$(CC) $(CFLAGS) -o $@ $<
-$(TESTS): $(PROGS) $(TEST_SRCS)
-	@printf "$@:\t"
-	@if [ -f $@.c ]; then                \
-		$(CC) $(CFLAGS) -o $@ $@.c;  \
-		if ./$@>/dev/null 2>&1; then \
-			echo PASS;           \
-		else                         \
-			echo FAIL; exit 1;   \
-		fi                           \
-	else                                 \
-		echo "N/A";                  \
-	fi
