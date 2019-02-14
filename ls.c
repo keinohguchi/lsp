@@ -227,12 +227,17 @@ static struct dirent *read_directory(const char *const path, size_t *nr)
 	i = 0;
 	while ((d = readdir(dir)) != NULL) {
 		if (i >= max) {
+			struct dirent *dlist_new;
+
 			max *= 2;
-			dlist = realloc(dlist, sizeof(struct dirent)*max);
-			if (dlist == NULL) {
+			dlist_new = realloc(dlist, sizeof(struct dirent)*max);
+			if (dlist_new == NULL) {
 				perror("realloc");
+				free(dlist);
+				dlist = NULL;
 				goto out;
 			}
+			dlist = dlist_new;
 		}
 		dlist[i++] = *d;
 	}
