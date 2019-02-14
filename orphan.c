@@ -92,12 +92,15 @@ int main(int argc, char *const argv[])
 		/* child */
 		int i;
 		for (i = 0; i < ctx.sleep; i++) {
-			fputc('.', stdout);
+			printf("child: ppid=%d\n", getppid());
 			fflush(stdout);
 			sleep(1);
 		}
+		printf("child: goodbye\n");
 		return 0;
 	}
 	/* let the parent die before the child */
+	printf("parent: pid=%d\n", getpid());
+	printf("parent: goodbye\n");
 	return 0;
 }
