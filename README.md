@@ -1,4 +1,4 @@
-# LSP; Linux System Programming
+# Linux System Programming
 
 [![CircleCI]](https://circleci.com/gh/keinohguchi/workflows/lsp)
 
@@ -18,19 +18,14 @@ $ make
 
 ```sh
 $ make test
-inode_test:     N/A
-block_test:     N/A
-wait_test:      N/A
-system_test:    N/A
-daemon_test:    PASS
-affinity_test:  PASS
+ls_test:        PASS
 resource_test:  PASS
+affinity_test:  PASS
 thread_test:    PASS
+fork_test:      PASS
 withdraw_test:  PASS
-xattr_test:     N/A
-mstat_test:     N/A
-clocks_test:    N/A
-$
+inode_test:     PASS
+daemon_test:    PASS
 ```
 
 ## Cleanup
