@@ -9,6 +9,7 @@
 /* program context */
 static struct {
 	int			orphan:1;
+	int			zombie:1;
 	long			sleep;
 	const char		*progname;
 	const char		*const version;
@@ -16,6 +17,7 @@ static struct {
 	const struct option	lopts[];
 } ctx = {
 	.orphan		= 1,
+	.zombie		= 0,
 	.sleep		= 5,
 	.version	= "1.0.1",
 	.opts		= "m:s:vh",
@@ -43,7 +45,7 @@ static void usage(FILE *stream, int status)
 		fprintf(stream, "\t-%c,--%s:", o->val, o->name);
 		switch (o->val) {
 		case 'm':
-			fprintf(stream, "\tchild mode (default:orphan)\n");
+			fprintf(stream, "\tchild mode [orphan|zombie] (default:orphan)\n");
 			break;
 		case 's':
 			fprintf(stream, "\tsleep length in second (default:5)\n");
@@ -65,15 +67,18 @@ static void usage(FILE *stream, int status)
 int main(int argc, char *const argv[])
 {
 	pid_t pid;
-	int opt;
+	int opt, i;
 
 	ctx.progname = argv[0];
 	while ((opt = getopt_long(argc, argv, ctx.opts, ctx.lopts, NULL)) != -1) {
 		long value;
 		switch (opt) {
 		case 'm':
+			ctx.orphan = ctx.zombie = 0;
 			if (!strncmp(optarg, "orphan", strlen(optarg)))
 				ctx.orphan = 1;
+			else if (!strncmp(optarg, "zombie", strlen(optarg)))
+				ctx.zombie = 1;
 			else
 				usage(stdout, EXIT_FAILURE);
 			break;
@@ -103,19 +108,22 @@ int main(int argc, char *const argv[])
 		return 1;
 	} else if (pid == 0) {
 		/* child */
-		int i;
-
 		if (ctx.orphan)
 			for (i = 0; i < ctx.sleep; i++) {
-				printf("child: ppid=%d\n", getppid());
+				printf("child[%d,ppid:%d] zzz...\n", getpid(), getppid());
 				fflush(stdout);
 				sleep(1);
 			}
-		printf("child: goodbye\n");
+		printf("child[%d,ppid:%d] goodbye\n", getpid(), getppid());
 		return 0;
 	}
 	/* let the parent die before the child */
-	printf("parent: pid=%d\n", getpid());
-	printf("parent: goodbye\n");
+	if (ctx.zombie)
+		for (i = 0; i < ctx.sleep; i++) {
+			printf("parent[%d]: zzz...\n", getpid());
+			fflush(stdout);
+			sleep(1);
+		}
+	printf("parent[%d]: goodbye\n", getpid());
 	return 0;
 }

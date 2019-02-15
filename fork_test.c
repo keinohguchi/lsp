@@ -11,7 +11,7 @@ int main(void)
 	char *target = realpath("./fork", NULL);
 	const struct test {
 		const char	*const name;
-		char		*const argv[4];
+		char		*const argv[6];
 		int		want;
 	} *t, tests[] = {
 		{
@@ -50,8 +50,13 @@ int main(void)
 			.want	= 0,
 		},
 		{
-			.name	= "orphan sleep 5 seconds",
-			.argv	= {target, "-s", "5", NULL},
+			.name	= "orphan sleep 2 seconds",
+			.argv	= {target, "-s", "2", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "zombie mode with parent sleep 1 seconds",
+			.argv	= {target, "-m", "zombi", "-s", "1", NULL},
 			.want	= 0,
 		},
 		{},
