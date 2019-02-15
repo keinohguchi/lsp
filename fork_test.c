@@ -8,7 +8,7 @@
 
 int main(void)
 {
-	char *target = realpath("./orphan", NULL);
+	char *target = realpath("./fork", NULL);
 	const struct test {
 		const char	*const name;
 		char		*const argv[4];
@@ -42,6 +42,11 @@ int main(void)
 		{
 			.name	= "no argument, orphan sleep 10 seconds",
 			.argv	= {target, NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "orphan mode",
+			.argv	= {target, "-m", "orphan", NULL},
 			.want	= 0,
 		},
 		{

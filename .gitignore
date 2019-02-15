@@ -13,7 +13,7 @@ mstat
 clocks
 prime
 ls
-orphan
+fork
 *_test
 *.o
 *.~
