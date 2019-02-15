@@ -59,6 +59,11 @@ int main(void)
 			.argv	= {target, "-m", "zombi", "-s", "1", NULL},
 			.want	= 0,
 		},
+		{
+			.name	= "normal mode with parent sleep 1 seconds",
+			.argv	= {target, "-m", "normal", "-s", "1", NULL},
+			.want	= 0,
+		},
 		{},
 	};
 	int ret;
