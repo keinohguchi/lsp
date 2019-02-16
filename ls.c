@@ -27,7 +27,7 @@ static struct context {
 	const char		*const version;
 	const char		*const opts;
 	const struct option	lopts[];
-} ls = {
+} ctx = {
 	.version	= "1.0.4",
 	.opts		= "alr",
 	.lopts		= {
@@ -42,16 +42,16 @@ static struct context {
 
 static void version(FILE *stream)
 {
-	fprintf(stream, "%s version %s\n", ls.progname, ls.version);
+	fprintf(stream, "%s version %s\n", ctx.progname, ctx.version);
 	exit(EXIT_SUCCESS);
 }
 
 static void usage(FILE *stream, int status)
 {
 	const struct option *o;
-	fprintf(stream, "usage: %s [-%s]\n", ls.progname, ls.opts);
+	fprintf(stream, "usage: %s [-%s]\n", ctx.progname, ctx.opts);
 	fprintf(stream, "options:\n");
-	for (o = ls.lopts; o->name; o++) {
+	for (o = ctx.lopts; o->name; o++) {
 		fprintf(stream, "\t");
 		if (!o->flag)
 			fprintf(stream, "-%c,", o->val);
@@ -200,13 +200,23 @@ static size_t print_file_long(const char *const base, const char *const file,
 static size_t print_file(const char *const base, const char *const file,
 			 struct stat *restrict st)
 {
-	if (ls.list)
+	if (ctx.list)
 		return print_file_long(base, file, st);
 	else
-		return printf("%-20s%s", file, ls.win.ws_col ? "" : "\n");
+		return printf("%-20s%s", file, ctx.win.ws_col ? "" : "\n");
 }
 
-static struct dirent *read_directory(const char *const path, size_t *nr)
+static int ls_file(const char *const file, struct stat *restrict st)
+{
+	if (print_file("./", file, st) < 0)
+		return -1;
+	if (!ctx.list)
+		if (printf("\n") < 0)
+			return -1;
+	return 0;
+}
+
+static struct dirent *read_dir(const char *const path, size_t *nr)
 {
 	struct dirent *d, *dlist;
 	size_t max = 8;
@@ -252,43 +262,22 @@ out:
 	return dlist;
 }
 
-static int list(const char *const file)
+static int ls_dir(const char *const path)
 {
-	struct dirent *dlist = NULL;
-	struct stat st;
+	struct dirent *dlist;
 	size_t nr, len, total;
-	char *path;
 	int ret, i;
 
-	if ((path = realpath(file, NULL)) == NULL) {
-		perror("realpath");
-		return -1;
-	}
-	ret = lstat(path, &st);
-	if (ret == -1) {
-		perror("lstat");
-		goto out;
-	}
-	if (!S_ISDIR(st.st_mode)) {
-		ret = -1;
-		if (print_file("./", file, &st) < 0)
-			goto out;
-		if (!ls.list)
-			if (printf("\n") < 0)
-				goto out;
-		ret = 0;
-		goto out;
-	}
 	ret = -1;
-	dlist = read_directory(file, &nr);
+	dlist = read_dir(path, &nr);
 	if (dlist == NULL)
 		goto out;
-	qsort(dlist, nr, sizeof(struct dirent), ls.cmp);
+	qsort(dlist, nr, sizeof(struct dirent), ctx.cmp);
 	total = 0;
 	for (i = 0; i < nr; i++) {
-		if (dlist[i].d_name[0] == '.' && !ls.all)
+		if (dlist[i].d_name[0] == '.' && !ctx.all)
 			continue;
-		if (ls.win.ws_col && total+strlen(dlist[i].d_name)+3 >= ls.win.ws_col) {
+		if (ctx.win.ws_col && total+strlen(dlist[i].d_name)+3 >= ctx.win.ws_col) {
 			if (printf("\n") < 0)
 				goto out;
 			total = 0;
@@ -296,18 +285,40 @@ static int list(const char *const file)
 		ret = -1;
 		if ((len = print_file(path, dlist[i].d_name, NULL)) < 0)
 			goto out;
-		if (ls.list)
+		if (ctx.list)
 			continue;
 		total += len;
 	}
 	ret = -1;
-	if (!ls.list && ls.win.ws_col)
+	if (!ctx.list && ctx.win.ws_col)
 		if (printf("\n") < 0)
 			goto out;
 	ret = 0;
 out:
 	if (dlist)
 		free(dlist);
+	return ret;
+}
+
+static int ls(const char *const file)
+{
+	struct stat st;
+	char *path;
+	int ret;
+
+	if ((path = realpath(file, NULL)) == NULL) {
+		perror("realpath");
+		return -1;
+	}
+	if ((ret = lstat(path, &st)) == -1) {
+		perror("lstat");
+		goto out;
+	}
+	if (S_ISDIR(st.st_mode))
+		ret = ls_dir(path);
+	else
+		ret = ls_file(file, &st);
+out:
 	if (path)
 		free(path);
 	return ret;
@@ -329,12 +340,12 @@ int main(int argc, char *const argv[])
 {
 	int i, opt, ret;
 
-	ls.progname = argv[0];
-	ls.cmp = filecmp;
-	while ((opt = getopt_long(argc, argv, ls.opts, ls.lopts, &i)) != -1) {
+	ctx.progname = argv[0];
+	ctx.cmp = filecmp;
+	while ((opt = getopt_long(argc, argv, ctx.opts, ctx.lopts, &i)) != -1) {
 		switch (opt) {
 		case 0:
-			switch (ls.lopts[i].name[0]) {
+			switch (ctx.lopts[i].name[0]) {
 			case 'v':
 				version(stdout);
 				break;
@@ -344,13 +355,13 @@ int main(int argc, char *const argv[])
 			}
 			break;
 		case 'a':
-			ls.all = 1;
+			ctx.all = 1;
 			break;
 		case 'l':
-			ls.list = 1;
+			ctx.list = 1;
 			break;
 		case 'r':
-			ls.cmp = rfilecmp;
+			ctx.cmp = rfilecmp;
 			break;
 		case '?':
 		default:
@@ -359,9 +370,9 @@ int main(int argc, char *const argv[])
 		}
 	}
 	/* get the window size */
-	ls.win.ws_col = 0;
+	ctx.win.ws_col = 0;
 	if (isatty(STDOUT_FILENO)) {
-		ret = ioctl(STDOUT_FILENO, TIOCGWINSZ, &ls.win);
+		ret = ioctl(STDOUT_FILENO, TIOCGWINSZ, &ctx.win);
 		if (ret == -1) {
 			perror("ioctl");
 			goto out;
@@ -369,10 +380,10 @@ int main(int argc, char *const argv[])
 	}
 	/* let's rock */
 	if (optind == argc)
-		ret = list(".");
+		ret = ls(".");
 	else
 		while (optind < argc)
-			if ((ret = list(argv[optind++])) == -1)
+			if ((ret = ls(argv[optind++])) == -1)
 				goto out;
 out:
 	if (ret != 0)
