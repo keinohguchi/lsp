@@ -31,7 +31,7 @@ static struct context {
 	const struct option	lopts[];
 } ctx = {
 	.colwidth	= 20,		/* a fixed column width for now */
-	.version	= "1.0.5",
+	.version	= "1.0.6",
 	.opts		= "alr",
 	.lopts		= {
 			{"all",		no_argument,	NULL,		'a'},
@@ -213,9 +213,6 @@ static int ls_file(const char *const file, struct stat *restrict st)
 {
 	if (print_file("./", file, st) < 0)
 		return -1;
-	if (!ctx.list)
-		if (printf("\n") < 0)
-			return -1;
 	return 0;
 }
 
@@ -269,26 +266,23 @@ out:
 static int ls_dir(const char *const path)
 {
 	struct dirent *dlist;
-	size_t nr, len;
-	int i, j, ret = -1;
+	int i, row, ret = -1;
+	size_t nr;
 
-	dlist = read_dir(path, &nr);
-	if (dlist == NULL)
+	if ((dlist = read_dir(path, &nr)) == NULL)
 		goto out;
 	qsort(dlist, nr, sizeof(struct dirent), ctx.cmp);
-	j = 0;
-	for (i = 0; i < nr; i++) {
-		if ((len = print_file(path, dlist[i].d_name, NULL)) < 0)
+	row = nr/ctx.colnum;
+	if (nr%ctx.colnum)
+		row++;
+	for (i = 0; i < row; i++) {
+		int j;
+		for (j = 0; j < ctx.colnum && i+j*row < nr; j++)
+			if (print_file(path, dlist[i+j*row].d_name, NULL) < 0)
+				goto out;
+		if (!ctx.list && printf("\n") < 0)
 			goto out;
-		if (++j < ctx.colnum)
-			continue;
-		if (printf("\n") < 0)
-			goto out;
-		j = 0;
 	}
-	if (ctx.colnum > 1)
-		if (printf("\n") < 0)
-			goto out;
 	ret = 0;
 out:
 	if (dlist)
