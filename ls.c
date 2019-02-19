@@ -21,6 +21,8 @@ static int help_flag = 0;
 static struct context {
 	const char		*progname;
 	struct winsize		win;
+	int			colnum;
+	int			colwidth;
 	int			all:1;
 	int			list:1;
 	int			(*cmp)(const void *, const void *);
@@ -28,7 +30,8 @@ static struct context {
 	const char		*const opts;
 	const struct option	lopts[];
 } ctx = {
-	.version	= "1.0.4",
+	.colwidth	= 20,		/* a fixed column width for now */
+	.version	= "1.0.5",
 	.opts		= "alr",
 	.lopts		= {
 			{"all",		no_argument,	NULL,		'a'},
@@ -203,7 +206,7 @@ static size_t print_file(const char *const base, const char *const file,
 	if (ctx.list)
 		return print_file_long(base, file, st);
 	else
-		return printf("%-20s%s", file, ctx.win.ws_col ? "" : "\n");
+		return printf("%-*s", ctx.colwidth, file);
 }
 
 static int ls_file(const char *const file, struct stat *restrict st)
@@ -265,32 +268,29 @@ out:
 static int ls_dir(const char *const path)
 {
 	struct dirent *dlist;
-	size_t nr, len, total;
-	int ret, i;
+	size_t nr, len;
+	int ret, i, j;
 
 	ret = -1;
 	dlist = read_dir(path, &nr);
 	if (dlist == NULL)
 		goto out;
 	qsort(dlist, nr, sizeof(struct dirent), ctx.cmp);
-	total = 0;
+	j = 0;
 	for (i = 0; i < nr; i++) {
 		if (dlist[i].d_name[0] == '.' && !ctx.all)
 			continue;
-		if (ctx.win.ws_col && total+strlen(dlist[i].d_name)+3 >= ctx.win.ws_col) {
-			if (printf("\n") < 0)
-				goto out;
-			total = 0;
-		}
 		ret = -1;
 		if ((len = print_file(path, dlist[i].d_name, NULL)) < 0)
 			goto out;
-		if (ctx.list)
+		if (++j < ctx.colnum)
 			continue;
-		total += len;
+		if (printf("\n") < 0)
+			goto out;
+		j = 0;
 	}
 	ret = -1;
-	if (!ctx.list && ctx.win.ws_col)
+	if (ctx.colnum > 1)
 		if (printf("\n") < 0)
 			goto out;
 	ret = 0;
@@ -369,14 +369,20 @@ int main(int argc, char *const argv[])
 			break;
 		}
 	}
-	/* get the window size */
-	ctx.win.ws_col = 0;
-	if (isatty(STDOUT_FILENO)) {
-		ret = ioctl(STDOUT_FILENO, TIOCGWINSZ, &ctx.win);
+	/* get the window size in case no long option */
+	ctx.colnum = 1;
+	if (isatty(STDOUT_FILENO) && !ctx.list) {
+		struct winsize win;
+		int colnum;
+
+		ret = ioctl(STDOUT_FILENO, TIOCGWINSZ, &win);
 		if (ret == -1) {
 			perror("ioctl");
 			goto out;
 		}
+		colnum = win.ws_col/ctx.colwidth;
+		if (colnum > 0)
+			ctx.colnum = colnum;
 	}
 	/* let's rock */
 	if (optind == argc)
