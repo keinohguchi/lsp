@@ -238,9 +238,10 @@ static struct dirent *read_dir(const char *const path, size_t *nr)
 	}
 	i = 0;
 	while ((d = readdir(dir)) != NULL) {
+		if (d->d_name[0] == '.' && !ctx.all)
+			continue;
 		if (i >= max) {
 			struct dirent *dlist_new;
-
 			max *= 2;
 			dlist_new = realloc(dlist, sizeof(struct dirent)*max);
 			if (dlist_new == NULL) {
@@ -269,18 +270,14 @@ static int ls_dir(const char *const path)
 {
 	struct dirent *dlist;
 	size_t nr, len;
-	int ret, i, j;
+	int i, j, ret = -1;
 
-	ret = -1;
 	dlist = read_dir(path, &nr);
 	if (dlist == NULL)
 		goto out;
 	qsort(dlist, nr, sizeof(struct dirent), ctx.cmp);
 	j = 0;
 	for (i = 0; i < nr; i++) {
-		if (dlist[i].d_name[0] == '.' && !ctx.all)
-			continue;
-		ret = -1;
 		if ((len = print_file(path, dlist[i].d_name, NULL)) < 0)
 			goto out;
 		if (++j < ctx.colnum)
@@ -289,7 +286,6 @@ static int ls_dir(const char *const path)
 			goto out;
 		j = 0;
 	}
-	ret = -1;
 	if (ctx.colnum > 1)
 		if (printf("\n") < 0)
 			goto out;
@@ -369,19 +365,16 @@ int main(int argc, char *const argv[])
 			break;
 		}
 	}
-	/* get the window size in case no long option */
+	/* multiple column support */
 	ctx.colnum = 1;
 	if (isatty(STDOUT_FILENO) && !ctx.list) {
 		struct winsize win;
 		int colnum;
-
-		ret = ioctl(STDOUT_FILENO, TIOCGWINSZ, &win);
-		if (ret == -1) {
+		if ((ret = ioctl(STDOUT_FILENO, TIOCGWINSZ, &win)) == -1) {
 			perror("ioctl");
 			goto out;
 		}
-		colnum = win.ws_col/ctx.colwidth;
-		if (colnum > 0)
+		if ((colnum = win.ws_col/ctx.colwidth) > 0)
 			ctx.colnum = colnum;
 	}
 	/* let's rock */
