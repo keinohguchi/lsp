@@ -213,6 +213,8 @@ static int ls_file(const char *const file, struct stat *restrict st)
 {
 	if (print_file("./", file, st) < 0)
 		return -1;
+	if (printf("\n") < 0)
+		return -1;
 	return 0;
 }
 
@@ -372,12 +374,19 @@ int main(int argc, char *const argv[])
 			ctx.colnum = colnum;
 	}
 	/* let's rock */
-	if (optind == argc)
+	switch (argc - optind) {
+	case 0:
 		ret = ls(".");
-	else
+		break;
+	case 1:
+		ret = ls(argv[optind]);
+		break;
+	default:
 		while (optind < argc)
 			if ((ret = ls(argv[optind++])) == -1)
 				goto out;
+		break;
+	}
 out:
 	if (ret != 0)
 		return 1;
