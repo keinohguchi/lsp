@@ -218,7 +218,7 @@ static int ls_file(const char *const file, struct stat *restrict st)
 	return 0;
 }
 
-static struct dirent *read_dir(const char *const path, size_t *nr)
+static struct dirent *scan_dir(const char *const path, size_t *nr)
 {
 	struct dirent *d, *dlist;
 	size_t max = 8;
@@ -271,7 +271,7 @@ static int ls_dir(const char *const path)
 	int i, row, ret = -1;
 	size_t nr;
 
-	if ((dlist = read_dir(path, &nr)) == NULL)
+	if ((dlist = scan_dir(path, &nr)) == NULL)
 		goto out;
 	qsort(dlist, nr, sizeof(struct dirent), ctx.cmp);
 	row = nr/ctx.colnum;
