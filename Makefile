@@ -14,6 +14,7 @@ PROGS += clocks
 PROGS += prime
 PROGS += ls
 PROGS += fork
+PROGS += access
 TEST_SRCS := $(filter %_test.c,$(wildcard *.c))
 TESTS := $(patsubst %.c,%,$(TEST_SRCS))
 CC     ?= gcc
