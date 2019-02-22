@@ -15,6 +15,7 @@ prime
 ls
 fork
 access
+time
 *_test
 *.o
 *.~
