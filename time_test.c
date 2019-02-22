@@ -18,6 +18,11 @@ int main(void)
 			.argv	= {target, "-h", NULL},
 			.want	= 0,
 		},
+		{
+			.name	= "date command",
+			.argv	= {target, "date", NULL},
+			.want	= 0,
+		},
 		{}, /* sentry */
 	};
 	int ret;
