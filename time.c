@@ -18,7 +18,7 @@ static const struct option lopts[] = {
 static void usage(FILE *stream, int status)
 {
 	const struct option *o;
-	fprintf(stream, "usage: %s [-%s] [command to run]\n", progname, opts);
+	fprintf(stream, "usage: %s [-%s] [command to time]\n", progname, opts);
 	fprintf(stream, "options\n");
 	for (o = lopts; o->name; o++) {
 		fprintf(stream, "\t-%c,--%s:", o->val, o->name);
@@ -71,9 +71,9 @@ static int rusage(char *const argv[])
 		return 1;
 	}
 	/* print out the result */
-	printf("%ld.%02lduser %ld.%02ldsystem ",
-	       ru.ru_utime.tv_sec, ru.ru_utime.tv_usec/10000,
-	       ru.ru_stime.tv_sec, ru.ru_stime.tv_usec/10000);
+	printf("%ld.%03lduser %ld.%03ldsystem ",
+	       ru.ru_utime.tv_sec, ru.ru_utime.tv_usec/1000,
+	       ru.ru_stime.tv_sec, ru.ru_stime.tv_usec/1000);
 	printf("(%ldmaxresident)k\n",
 	       ru.ru_maxrss);
 	printf("%ldinputs+%ldoutputs (%ldmajor+%ldminor)pagefaults ",
