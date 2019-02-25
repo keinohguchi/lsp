@@ -30,6 +30,11 @@ int main()
 			.want	= 0,
 		},
 		{
+			.name	= "do not sort option",
+			.argv	= {target, "-f", NULL},
+			.want	= 0,
+		},
+		{
 			.name	= "list and all option",
 			.argv	= {target, "-l", "-a", NULL},
 			.want	= 0,

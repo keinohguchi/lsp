@@ -32,11 +32,12 @@ static struct context {
 } ctx = {
 	.colwidth	= 20,		/* a fixed column width for now */
 	.version	= "1.0.6",
-	.opts		= "alr",
+	.opts		= "alrf",
 	.lopts		= {
 			{"all",		no_argument,	NULL,		'a'},
 			{"long",	no_argument,	NULL,		'l'},
 			{"reverse",	no_argument,	NULL,		'r'},
+			{"",		no_argument,	NULL,		'f'},
 			{"version",	no_argument,	&version_flag,	1},
 			{"help",	no_argument,	&help_flag,	1},
 			{},
@@ -57,8 +58,11 @@ static void usage(FILE *stream, int status)
 	for (o = ctx.lopts; o->name; o++) {
 		fprintf(stream, "\t");
 		if (!o->flag)
-			fprintf(stream, "-%c,", o->val);
-		fprintf(stream, "--%s:\t", o->name);
+			fprintf(stream, "-%c", o->val);
+		if (o->name[0] != '\0')
+			fprintf(stream, "%s--%s:\t", o->flag ? "" : ",", o->name);
+		else
+			fprintf(stream, ":     \t");
 		switch (o->val) {
 		case 'a':
 			fprintf(stream,
@@ -69,6 +73,9 @@ static void usage(FILE *stream, int status)
 			break;
 		case 'r':
 			fprintf(stream, "reverse order while sorting\n");
+			break;
+		case 'f':
+			fprintf(stream, "do not sort the list\n");
 			break;
 		case 1:
 			switch (o->name[0]) {
@@ -273,7 +280,8 @@ static int ls_dir(const char *const path)
 
 	if ((dlist = scan_dir(path, &nr)) == NULL)
 		goto out;
-	qsort(dlist, nr, sizeof(struct dirent), ctx.cmp);
+	if (ctx.cmp)
+		qsort(dlist, nr, sizeof(struct dirent), ctx.cmp);
 	row = nr/ctx.colnum;
 	if (nr%ctx.colnum)
 		row++;
@@ -354,6 +362,9 @@ int main(int argc, char *const argv[])
 			break;
 		case 'r':
 			ctx.cmp = rfilecmp;
+			break;
+		case 'f':
+			ctx.cmp = NULL;
 			break;
 		case '?':
 		default:
