@@ -10,12 +10,17 @@ int main(void)
 	char *const target = realpath("./find", NULL);
 	const struct test {
 		char	*name;
-		char	*argv[5];
+		char	*argv[4];
 		int	want;
 	} *t, tests[] = {
 		{
+			.name	= "name option",
+			.argv	= {target, "-n", "test", NULL},
+			.want	= 0,
+		},
+		{
 			.name	= "help option",
-			.argv	= {},
+			.argv	= {target, "-h", NULL},
 			.want	= 0,
 		},
 		{},
