@@ -1,4 +1,8 @@
 a.out
+*_test
+*.o
+*.~
+cscope.*
 inode
 block
 wait
@@ -16,7 +20,4 @@ ls
 fork
 access
 time
-*_test
-*.o
-*.~
-cscope.*
+find

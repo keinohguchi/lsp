@@ -16,6 +16,7 @@ PROGS += ls
 PROGS += fork
 PROGS += access
 PROGS += time
+PROGS += find
 TEST_SRCS := $(filter %_test.c,$(wildcard *.c))
 TESTS := $(patsubst %.c,%,$(TEST_SRCS))
 CC     ?= gcc
