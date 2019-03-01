@@ -3,6 +3,9 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <pwd.h>
+#include <grp.h>
+#include <sys/types.h>
 
 static const char *progname;
 static const char *const opts = "h";
@@ -32,6 +35,10 @@ static void usage(FILE *stream, int status)
 
 int main(int argc, char *const argv[])
 {
+	struct passwd *p;
+	struct group *g;
+	uid_t uid;
+	gid_t gid;
 	int opt;
 
 	while ((opt = getopt_long(argc, argv, opts, lopts, NULL)) != -1) {
@@ -45,7 +52,18 @@ int main(int argc, char *const argv[])
 			break;
 		}
 	}
-	printf("uid=%d gid=%d\n", geteuid(), getegid());
+	uid = geteuid();
+	p = getpwuid(uid);
+	if (p == NULL) {
+		perror("getpwuid");
+		/* ignore */
+	}
+	gid = getegid();
+	g = getgrgid(gid);
+	if (g == NULL) {
+		perror("getgrgid");
+		/* ignore */
+	}
+	printf("uid=%d(%s) gid=%d(%s)\n", uid, p ? p->pw_name : "null", gid, g ? g->gr_name : "null");
 	return 0;
 }
-
