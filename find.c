@@ -80,18 +80,18 @@ static int find(const char *restrict path, const char *file, const char *restric
 
 	dir = opendir(path);
 	if (dir == NULL) {
+		/* ignore this directory */
 		perror("opendir");
-		return -1;
+		return 0;
 	}
 	while ((d = readdir(dir))) {
 		if (!strcmp(d->d_name, ".") || !strcmp(d->d_name, ".."))
 			continue;
 		pathname(path, d->d_name, buf, sizeof(buf));
-		if (find(buf, d->d_name, pattern))
+		if ((ret = find(buf, d->d_name, pattern)))
 			break;
 	}
-	ret = closedir(dir);
-	if (ret == -1)
+	if (closedir(dir))
 		perror("closedir");
 	return ret;
 }
