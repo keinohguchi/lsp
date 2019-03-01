@@ -72,7 +72,7 @@ static int find(const char *restrict path, const char *file, const char *restric
 
 	ret = lstat(path, &s);
 	if (ret == -1) {
-		perror("stat");
+		perror("lstat");
 		return -1;
 	}
 	if (!S_ISDIR(s.st_mode))
