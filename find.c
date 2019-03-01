@@ -1,8 +1,11 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 #include <stdio.h>
 #include <stdlib.h>
-#include <getopt.h>
 #include <unistd.h>
+#include <getopt.h>
+#include <limits.h>
+#include <fnmatch.h>
+#include <sys/stat.h>
 
 static const char *progname;
 static const char *opts = "n:h";
@@ -15,7 +18,7 @@ static const struct option lopts[] = {
 static void usage(FILE *stream, int status)
 {
 	const struct option *o;
-	fprintf(stream, "usage: %s [-%s]\n", progname, opts);
+	fprintf(stream, "usage: %s [-%s] <directory name>\n", progname, opts);
 	fprintf(stream, "options:\n");
 	for (o = lopts; o->name; o++) {
 		fprintf(stream, "\t-%c,--%s:", o->val, o->name);
@@ -34,9 +37,25 @@ static void usage(FILE *stream, int status)
 	_exit(status);
 }
 
+static int find(const char *restrict path, const char *restrict pattern)
+{
+	struct stat s;
+	int ret;
+
+	if (!fnmatch(pattern, path, FNM_EXTMATCH))
+		printf("%s\n", path);
+
+	ret = lstat(path, &s);
+	if (ret == -1) {
+		perror("lstat");
+		return ret;
+	}
+	return ret;
+}
+
 int main(int argc, char *argv[])
 {
-	const char *pattern = NULL;
+	const char *pattern = "*";
 	int opt;
 
 	progname = argv[0];
@@ -53,6 +72,10 @@ int main(int argc, char *argv[])
 			usage(stderr, EXIT_FAILURE);
 			break;
 		}
-	printf("find '%s'\n", pattern);
+	if (optind >= argc)
+		usage(stderr, EXIT_FAILURE);
+
+	if (find(argv[optind], pattern))
+		return 1;
 	return 0;
 }
