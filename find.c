@@ -99,6 +99,7 @@ static int find(const char *restrict path, const char *file, const char *restric
 int main(int argc, char *argv[])
 {
 	const char *pattern = "*";
+	const char *path;
 	int opt;
 
 	progname = argv[0];
@@ -118,7 +119,9 @@ int main(int argc, char *argv[])
 	if (optind >= argc)
 		usage(stderr, EXIT_FAILURE);
 
-	if (find(argv[optind], argv[optind], pattern))
+	/* let's roll */
+	path = argv[optind];
+	if (find(path, path, pattern))
 		return 1;
 	return 0;
 }
