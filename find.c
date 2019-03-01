@@ -5,6 +5,9 @@
 #include <getopt.h>
 #include <limits.h>
 #include <fcntl.h>
+#include <dirent.h>
+#include <libgen.h>
+#include <string.h>
 #include <fnmatch.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -39,36 +42,57 @@ static void usage(FILE *stream, int status)
 	_exit(status);
 }
 
-static int findat(int fd, const char *restrict path, const char *restrict pattern)
+static const char *pathname(const char *base, const char *file, char *buf, size_t len)
 {
-	struct stat s;
-	int ret;
-
-	if (!fnmatch(pattern, path, FNM_EXTMATCH))
-		printf("%s\n", path);
-
-	ret = fstatat(fd, path, &s, 0);
-	if (ret == -1) {
-		perror("lstat");
-		return ret;
+	switch (strlen(base)) {
+	case 0:
+		return file;
+	default:
+		if (base[strlen(base)-1] == '/') {
+			if (snprintf(buf, len, "%s%s", base, file) < 0)
+				return file;
+		} else {
+			if (snprintf(buf, len, "%s/%s", base, file) < 0)
+				return file;
+		}
+		return buf;
 	}
-	return ret;
 }
 
-static int find(const char *restrict path, const char *restrict pattern)
+static int find(const char *restrict path, const char *file, const char *restrict pattern)
 {
+	char buf[PATH_MAX];
+	struct dirent *d;
+	struct stat s;
+	DIR *dir;
 	int ret;
-	int fd;
 
-	fd = open(path, O_RDONLY);
-	if (fd == -1) {
-		perror("open");
+	if (!fnmatch(pattern, file, FNM_EXTMATCH))
+		printf("%s\n", path);
+
+	ret = lstat(path, &s);
+	if (ret == -1) {
+		perror("stat");
 		return -1;
 	}
-	ret = findat(fd, path, pattern);
-	if (fd != -1)
-		if (close(fd))
-			perror("close");
+	if (!S_ISDIR(s.st_mode))
+		return 0;
+
+	dir = opendir(path);
+	if (dir == NULL) {
+		perror("opendir");
+		return -1;
+	}
+	while ((d = readdir(dir))) {
+		if (!strcmp(d->d_name, ".") || !strcmp(d->d_name, ".."))
+			continue;
+		pathname(path, d->d_name, buf, sizeof(buf));
+		if (find(buf, d->d_name, pattern))
+			break;
+	}
+	ret = closedir(dir);
+	if (ret == -1)
+		perror("closedir");
 	return ret;
 }
 
@@ -94,7 +118,7 @@ int main(int argc, char *argv[])
 	if (optind >= argc)
 		usage(stderr, EXIT_FAILURE);
 
-	if (find(argv[optind], pattern))
+	if (find(argv[optind], argv[optind], pattern))
 		return 1;
 	return 0;
 }
