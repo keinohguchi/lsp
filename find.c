@@ -4,8 +4,10 @@
 #include <unistd.h>
 #include <getopt.h>
 #include <limits.h>
+#include <fcntl.h>
 #include <fnmatch.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 
 static const char *progname;
 static const char *opts = "n:h";
@@ -37,7 +39,7 @@ static void usage(FILE *stream, int status)
 	_exit(status);
 }
 
-static int find(const char *restrict path, const char *restrict pattern)
+static int findat(int fd, const char *restrict path, const char *restrict pattern)
 {
 	struct stat s;
 	int ret;
@@ -45,11 +47,28 @@ static int find(const char *restrict path, const char *restrict pattern)
 	if (!fnmatch(pattern, path, FNM_EXTMATCH))
 		printf("%s\n", path);
 
-	ret = lstat(path, &s);
+	ret = fstatat(fd, path, &s, 0);
 	if (ret == -1) {
 		perror("lstat");
 		return ret;
 	}
+	return ret;
+}
+
+static int find(const char *restrict path, const char *restrict pattern)
+{
+	int ret;
+	int fd;
+
+	fd = open(path, O_RDONLY);
+	if (fd == -1) {
+		perror("open");
+		return -1;
+	}
+	ret = findat(fd, path, pattern);
+	if (fd != -1)
+		if (close(fd))
+			perror("close");
 	return ret;
 }
 
