@@ -10,18 +10,27 @@
 #include <libgen.h>
 #include <string.h>
 #include <fnmatch.h>
-#include <sys/stat.h>
+#include <pthread.h>
+#include <errno.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 
 static const char *progname;
 static const char *pattern;
-static bool recursive = true;
-static const char *opts = "n:h";
+static bool recursive = false;
+static const char *opts = "n:rh";
 static const struct option lopts[] = {
 	{"name",	required_argument,	NULL,	'n'},
 	{"help",	no_argument,		NULL,	'h'},
 	{"recursive",	no_argument,		NULL,	'r'},
 	{NULL,		0,			NULL,	0},
+};
+
+/* context used for the thread communication */
+struct context {
+	const char	*path;
+	pthread_t	tid;
+	int		ret;
 };
 
 static void usage(FILE *stream, int status)
@@ -81,12 +90,23 @@ static int pathmatch(const char *restrict path, const char *restrict pattern)
 	return ret;
 }
 
+static int find(const char *const path);
+
+static void *finder(void *data)
+{
+	struct context *ctx = data;
+	ctx->ret = find(ctx->path);
+	return (void *)&ctx->ret;
+}
+
 static int find(const char *const path)
 {
+	struct context ctxs[1024];
 	struct dirent *d;
 	struct stat s;
 	DIR *dir;
 	int ret;
+	int i;
 
 	if (!pathmatch(path, pattern))
 		printf("%s\n", path);
@@ -105,6 +125,7 @@ static int find(const char *const path)
 		perror("opendir");
 		return 0;
 	}
+	i = 0;
 	while ((d = readdir(dir))) {
 		char *child;
 		if (!strcmp(d->d_name, ".") || !strcmp(d->d_name, ".."))
@@ -116,17 +137,47 @@ static int find(const char *const path)
 			break;
 		}
 		pathname(path, d->d_name, child, PATH_MAX);
-		if (recursive)
+		if (recursive) {
 			ret = find(child);
-		else
-			/* thread version will come here */
-			ret = 0;
-		free(child);
+			free(child);
+		} else {
+			struct context *ctx;
+			if (i >= 1024) {
+				fprintf(stderr, "too many child directories\n");
+				ret = -1;
+				break;
+			}
+			ctx = &ctxs[i];
+			ctx->path = child;
+			ret = pthread_create(&ctx->tid, NULL, finder, ctx);
+			if (ret) {
+				errno = ret;
+				perror("pthread_cretae");
+				free(child);
+			}
+			i++;
+		}
 		if (ret)
 			break;
 	}
 	if (closedir(dir))
 		perror("closedir");
+	if (!recursive) {
+		while (--i >= 0) {
+			int *retp;
+			int cret = pthread_join(ctxs[i].tid, (void **)&retp);
+			if (cret) {
+				errno = cret;
+				perror("pthread_join");
+				ret = -1;
+			}
+			if (*retp) {
+				fprintf(stderr, "pthread returns error: %d\n", *retp);
+				ret = *retp;
+			}
+			free((void *)ctxs[i].path);
+		}
+	}
 	return ret;
 }
 

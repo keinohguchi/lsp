@@ -10,12 +10,27 @@ int main(void)
 	char *const target = realpath("./find", NULL);
 	const struct test {
 		char	*name;
-		char	*argv[5];
+		char	*argv[6];
 		int	want;
 	} *t, tests[] = {
 		{
-			.name	= "name option",
-			.argv	= {target, "-n", "test", "/", NULL},
+			.name	= "all the files under /etc",
+			.argv	= {target, "/etc", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "recursive option",
+			.argv	= {target, "-r", "/", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "name option under /etc",
+			.argv	= {target, "-n", "test", "/etc", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "name and recursive option",
+			.argv	= {target, "-n", "test", "-r", "/", NULL},
 			.want	= 0,
 		},
 		{
