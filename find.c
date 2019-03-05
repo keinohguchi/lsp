@@ -153,7 +153,7 @@ static int find(const char *const path)
 			if (ret) {
 				errno = ret;
 				perror("pthread_cretae");
-				free(child);
+				break;
 			}
 			i++;
 		}
