@@ -58,5 +58,6 @@ int main(int argc, char *const argv[])
 	printf("%s$ ", prompt);
 	while ((cmd = fgets(line, sizeof(line), stdin)))
 		printf("%s$ ", prompt);
+	printf("\n");
 	return 0;
 }
