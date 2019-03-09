@@ -5,9 +5,10 @@
 #include <getopt.h>
 #include <string.h>
 #include <signal.h>
+#include <fcntl.h>
 #include <unistd.h>
 
-static const unsigned default_timeout = 10;
+static unsigned timeout = 10;
 static const char *progname;
 static const char *const opts = "t:p:h";
 static const struct option lopts[] = {
@@ -53,17 +54,60 @@ static void timeout_handler(int signo)
 static int init_timeout(unsigned timeout)
 {
 	signal(SIGALRM, timeout_handler);
-	while (timeout)
-		timeout = alarm(timeout);
+	while (alarm(timeout))
+		alarm(0);
+	return 0;
+}
+
+static void io_handler(int signo)
+{
+	if (signo != SIGIO)
+		return;
+	while (alarm(timeout))
+		alarm(0);
+}
+
+static int init_io(int fd)
+{
+	int ret;
+
+	ret = fcntl(fd, F_GETFL);
+	if (ret == -1) {
+		perror("fcntl(F_GETFL)");
+		return -1;
+	}
+	ret = fcntl(fd, F_SETFL, ret|O_ASYNC);
+	if (ret == -1) {
+		perror("fcntl(F_SETFL)");
+		return -1;
+	}
+	ret = fcntl(fd, F_SETOWN, getpid());
+	if (ret == -1) {
+		perror("fcntl(F_SETOWN)");
+		return -1;
+	}
+	signal(SIGIO, io_handler);
+	return 0;
+}
+
+static int init(unsigned timeout, int fd)
+{
+	int ret;
+
+	ret = init_timeout(timeout);
+	if (ret == -1)
+		return ret;
+	ret = init_io(fd);
+	if (ret == -1)
+		return ret;
 	return 0;
 }
 
 int main(int argc, char *const argv[])
 {
-	unsigned timeout = default_timeout;
 	const char *prompt = "sh";
 	char *cmd, line[LINE_MAX];
-	int ret, opt;
+	int opt;
 
 	progname = argv[0];
 	while ((opt = getopt_long(argc, argv, opts, lopts, NULL)) != -1) {
@@ -87,8 +131,7 @@ int main(int argc, char *const argv[])
 			break;
 		}
 	}
-	ret = init_timeout(timeout);
-	if (ret == -1)
+	if (init(timeout, STDIN_FILENO))
 		return 1;
 	printf("%s$ ", prompt);
 	while ((cmd = fgets(line, sizeof(line), stdin)))
