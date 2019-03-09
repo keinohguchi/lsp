@@ -11,9 +11,19 @@ int main(void)
 	char *const target = realpath("./sh", NULL);
 	const struct test {
 		const char	*const name;
-		char		*const argv[3];
+		char		*const argv[6];
 		int		want;
 	} *t, tests[] = {
+		{
+			.name	= "1 second timeout option",
+			.argv	= {target, "-t", "1", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "1 second timeout with prompt option",
+			.argv	= {target, "-t", "1", "-p", "someprompt", NULL},
+			.want	= 0,
+		},
 		{
 			.name	= "help option",
 			.argv	= {target, "-h", NULL},
