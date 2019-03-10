@@ -7,9 +7,18 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <linux/limits.h>
 
-static unsigned timeout = 10;
+#ifndef ARG_MAX
+#define ARG_MAX 1024
+#endif /* ARG_MAX */
+
+static unsigned timeout = 5;
+static const char *prompt = "sh";
 static const char *progname;
+static const char *delim = " \t\n";
 static const char *const opts = "t:p:h";
 static const struct option lopts[] = {
 	{"timeout",	required_argument,	NULL,	't'},
@@ -103,11 +112,90 @@ static int init(unsigned timeout, int fd)
 	return 0;
 }
 
+static void print_prompt(void)
+{
+	printf("%s$ ", prompt);
+}
+
+static int exit_handler(char *const argv[])
+{
+	exit(EXIT_SUCCESS);
+	return 0;
+}
+
+/* shell command and the handler */
+static const struct command {
+	const char	*const name;
+	int		(*handler)(char *const argv[]);
+} cmds[] = {
+	{
+		.name		= "exit",
+		.handler	= exit_handler,
+	},
+	{}, /* sentry */
+};
+
+static const struct command *parse_command(char *argv0)
+{
+	const struct command *cmd;
+	for (cmd = cmds; cmd->name; cmd++)
+		if (!strcmp(argv0, cmd->name))
+			return cmd;
+	return NULL;
+}
+
+static int process(char *cmdline)
+{
+	char *save, *start = cmdline;
+	char *argv[ARG_MAX];
+	const struct command *cmd;
+	int i, ret, status;
+	pid_t pid;
+
+	for (i = 0; i < ARG_MAX; i++) {
+		argv[i] = strtok_r(start, delim, &save);
+		if (!argv[i])
+			break;
+		start = NULL;
+	}
+
+	/* shell command handling */
+	if ((cmd = parse_command(argv[0])))
+		return (*cmd->handler)(argv);
+
+	/* external command handling */
+	pid = fork();
+	if (pid == -1) {
+		perror("fork");
+		return -1;
+	} else if (pid == 0) {
+		ret = execvp(argv[0], argv);
+		if (ret == -1) {
+			perror("execvp");
+			exit(EXIT_FAILURE);
+		}
+		/* not reachable */
+	}
+	ret = wait(&status);
+	if (ret == -1) {
+		perror("wait");
+		return -1;
+	}
+	if (WIFSIGNALED(status)) {
+		fprintf(stderr, "child exit with signal(%s)\n",
+			strsignal(WTERMSIG(status)));
+		return -1;
+	}
+	if (WIFEXITED(status) && WEXITSTATUS(status))
+		return WEXITSTATUS(status);
+	print_prompt();
+	return 0;
+}
+
 int main(int argc, char *const argv[])
 {
-	const char *prompt = "sh";
 	char *cmd, line[LINE_MAX];
-	int opt;
+	int opt, ret;
 
 	progname = argv[0];
 	while ((opt = getopt_long(argc, argv, opts, lopts, NULL)) != -1) {
@@ -133,9 +221,12 @@ int main(int argc, char *const argv[])
 	}
 	if (init(timeout, STDIN_FILENO))
 		return 1;
-	printf("%s$ ", prompt);
+
+	/* let's roll */
+	print_prompt();
 	while ((cmd = fgets(line, sizeof(line), stdin)))
-		printf("%s$ ", prompt);
+		if ((ret = process(cmd)))
+			return 1;
 	printf("\n");
 	return 0;
 }
