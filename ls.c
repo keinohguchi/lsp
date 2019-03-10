@@ -44,6 +44,12 @@ static struct context {
 	},
 };
 
+/* file represents the file context */
+struct file {
+	/* 256, just like struct dentry.d_name */
+	char	name[256];
+};
+
 static void version(FILE *stream)
 {
 	fprintf(stream, "%s version %s\n", ctx.progname, ctx.version);
@@ -225,9 +231,10 @@ static int ls_file(const char *const file, struct stat *restrict st)
 	return 0;
 }
 
-static struct dirent *scan_dir(const char *const path, size_t *nr)
+static struct file *scan_dir(const char *const path, size_t *nr)
 {
-	struct dirent *d, *dlist;
+	struct file *flist;
+	struct dirent *d;
 	size_t max = 8;
 	DIR *dir;
 	int i;
@@ -237,8 +244,8 @@ static struct dirent *scan_dir(const char *const path, size_t *nr)
 		perror("opendir");
 		return NULL;
 	}
-	dlist = calloc(max, sizeof(struct dirent));
-	if (dlist == NULL) {
+	flist = calloc(max, sizeof(struct file));
+	if (flist == NULL) {
 		perror("calloc");
 		goto out;
 	}
@@ -247,56 +254,57 @@ static struct dirent *scan_dir(const char *const path, size_t *nr)
 		if (d->d_name[0] == '.' && !ctx.all)
 			continue;
 		if (i >= max) {
-			struct dirent *dlist_new;
+			struct file *flist_new;
 			max *= 2;
-			dlist_new = realloc(dlist, sizeof(struct dirent)*max);
-			if (dlist_new == NULL) {
+			flist_new = realloc(flist, sizeof(struct file)*max);
+			if (flist_new == NULL) {
 				perror("realloc");
-				free(dlist);
-				dlist = NULL;
+				free(flist);
+				flist = NULL;
 				goto out;
 			}
-			dlist = dlist_new;
+			flist = flist_new;
 		}
-		dlist[i++] = *d;
+		strncpy(flist[i].name, d->d_name, sizeof(flist[i].name));
+		i++;
 	}
 	*nr = i;
 out:
 	if (dir)
 		if (closedir(dir) == -1) {
 			perror("closedir");
-			if (dlist)
-				free(dlist);
-			dlist = NULL;
+			if (flist)
+				free(flist);
+			flist = NULL;
 		}
-	return dlist;
+	return flist;
 }
 
 static int ls_dir(const char *const path)
 {
-	struct dirent *dlist;
+	struct file *flist;
 	int i, row, ret = -1;
 	size_t nr;
 
-	if ((dlist = scan_dir(path, &nr)) == NULL)
+	if ((flist = scan_dir(path, &nr)) == NULL)
 		goto out;
 	if (ctx.cmp)
-		qsort(dlist, nr, sizeof(struct dirent), ctx.cmp);
+		qsort(flist, nr, sizeof(struct file), ctx.cmp);
 	row = nr/ctx.colnum;
 	if (nr%ctx.colnum)
 		row++;
 	for (i = 0; i < row; i++) {
 		int j;
 		for (j = 0; j < ctx.colnum && i+j*row < nr; j++)
-			if (print_file(path, dlist[i+j*row].d_name, NULL) < 0)
+			if (print_file(path, flist[i+j*row].name, NULL) < 0)
 				goto out;
 		if (!ctx.list && printf("\n") < 0)
 			goto out;
 	}
 	ret = 0;
 out:
-	if (dlist)
-		free(dlist);
+	if (flist)
+		free(flist);
 	return ret;
 }
 
@@ -326,14 +334,14 @@ out:
 
 static int filecmp(const void *file1, const void *file2)
 {
-	const struct dirent *a = file1, *b = file2;
-	return strcmp(a->d_name, b->d_name);
+	const struct file *a = file1, *b = file2;
+	return strcmp(a->name, b->name);
 }
 
 static int rfilecmp(const void *file1, const void *file2)
 {
-	const struct dirent *a = file2, *b = file1;
-	return strcmp(a->d_name, b->d_name);
+	const struct file *a = file2, *b = file1;
+	return strcmp(a->name, b->name);
 }
 
 int main(int argc, char *const argv[])
