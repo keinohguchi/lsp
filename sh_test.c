@@ -12,37 +12,92 @@ int main(void)
 	const struct test {
 		const char	*const name;
 		char		*const argv[6];
+		const char	*const cmd;
 		int		want;
 	} *t, tests[] = {
 		{
+			.name	= "help option",
+			.argv	= {target, "-h", NULL},
+			.cmd	= NULL,
+			.want	= 0,
+		},
+		{
 			.name	= "1 second timeout option",
 			.argv	= {target, "-t", "1", NULL},
+			.cmd	= NULL,
 			.want	= 0,
 		},
 		{
 			.name	= "1 second timeout with prompt option",
 			.argv	= {target, "-t", "1", "-p", "someprompt", NULL},
+			.cmd	= NULL,
 			.want	= 0,
 		},
 		{
-			.name	= "help option",
-			.argv	= {target, "-h", NULL},
+			.name	= "exit command",
+			.argv	= {target, NULL},
+			.cmd	= "exit\n",
+			.want	= 0,
+		},
+		{
+			.name	= "quit command",
+			.argv	= {target, NULL},
+			.cmd	= "quit\n",
+			.want	= 0,
+		},
+		{
+			.name	= "version and exit command",
+			.argv	= {target, NULL},
+			.cmd	= "version\nexit\n",
+			.want	= 0,
+		},
+		{
+			.name	= "date and exit command",
+			.argv	= {target, NULL},
+			.cmd	= "date\nexit\n",
+			.want	= 0,
+		},
+		{
+			.name	= "ls -l and exit command",
+			.argv	= {target, NULL},
+			.cmd	= "ls -l\nexit\n",
 			.want	= 0,
 		},
 		{}, /* sentry */
 	};
 	int ret = 0;
 
+	/* ignore the sigpipe for parent to receive
+	 * when child exits */
+	signal(SIGPIPE, SIG_IGN);
+
 	for (t = tests; t->name; t++) {
+		int fds[2];
 		int status;
 		pid_t pid;
 
+		/* pipe to pass the command to child */
+		ret = pipe(fds);
+		if (ret == -1) {
+			perror("pipe");
+			break;
+		}
 		ret = -1;
 		pid = fork();
 		if (pid == -1) {
 			perror("fork");
 			break;
 		} else if (pid == 0) {
+			ret = close(fds[1]);
+			if (ret == -1) {
+				perror("close");
+				exit(EXIT_FAILURE);
+			}
+			ret = dup2(fds[0], STDIN_FILENO);
+			if (ret == -1) {
+				perror("dup2");
+				exit(EXIT_FAILURE);
+			}
 			ret = execv(target, t->argv);
 			if (ret == -1) {
 				perror("execv");
@@ -50,9 +105,26 @@ int main(void)
 			}
 			/* not reach */
 		}
+		ret = close(fds[0]);
+		if (ret == -1) {
+			perror("close");
+			break;
+		}
+		if (t->cmd) {
+			ret = write(fds[1], t->cmd, strlen(t->cmd));
+			if (ret == -1) {
+				perror("write");
+				break;
+			}
+		}
 		ret = waitpid(pid, &status, 0);
 		if (ret == -1) {
 			perror("waitpid");
+			break;
+		}
+		ret = close(fds[1]);
+		if (ret == -1) {
+			perror("close");
 			break;
 		}
 		ret = -1;
