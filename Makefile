@@ -19,6 +19,7 @@ PROGS += time
 PROGS += find
 PROGS += id
 PROGS += sh
+PROGS += server
 TEST_SRCS := $(filter %_test.c,$(wildcard *.c))
 TESTS := $(patsubst %.c,%,$(TEST_SRCS))
 CC     ?= gcc
