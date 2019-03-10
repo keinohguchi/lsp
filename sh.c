@@ -19,6 +19,7 @@ static unsigned timeout = 30;
 static const char *prompt = "sh";
 static const char *progname;
 static const char *delim = " \t\n";
+static const char *const version = "1.0.0";
 static const char *const opts = "t:p:h";
 static const struct option lopts[] = {
 	{"timeout",	required_argument,	NULL,	't'},
@@ -123,6 +124,12 @@ static int exit_handler(char *const argv[])
 	return 0;
 }
 
+static int version_handler(char *const argv[])
+{
+	printf("version %s\n", version);
+	return 0;
+}
+
 /* shell command and the handler */
 static const struct command {
 	const char	*const name;
@@ -131,6 +138,14 @@ static const struct command {
 	{
 		.name		= "exit",
 		.handler	= exit_handler,
+	},
+	{
+		.name		= "quit",
+		.handler	= exit_handler,
+	},
+	{
+		.name		= "version",
+		.handler	= version_handler,
 	},
 	{}, /* sentry */
 };
@@ -158,10 +173,16 @@ static int process(char *cmdline)
 			break;
 		start = NULL;
 	}
+	if (!argv[0])
+		return 0;
 
 	/* shell command handling */
-	if ((cmd = parse_command(argv[0])))
-		return (*cmd->handler)(argv);
+	if ((cmd = parse_command(argv[0]))) {
+		ret = (*cmd->handler)(argv);
+		if (!ret)
+			print_prompt();
+		return ret;
+	}
 
 	/* external command handling */
 	pid = fork();
