@@ -15,7 +15,7 @@
 #define ARG_MAX 1024
 #endif /* ARG_MAX */
 
-static unsigned timeout = 5;
+static unsigned timeout = 30;
 static const char *prompt = "sh";
 static const char *progname;
 static const char *delim = " \t\n";
@@ -36,10 +36,10 @@ static void usage(FILE *stream, int status)
 		fprintf(stream, "\t-%c,--%s:", o->val, o->name);
 		switch (o->val) {
 		case 't':
-			fprintf(stream, "\tspecify timeout in second\n");
+			fprintf(stream,"\tspecify timeout in second (default %ds)\n", timeout);
 			break;
 		case 'p':
-			fprintf(stream, "\tspecify the prompt\n");
+			fprintf(stream, "\tspecify the prompt (default '%s$ ')\n", prompt);
 			break;
 		case 'h':
 			fprintf(stream, "\tdisplay this message and exit\n");
@@ -227,6 +227,6 @@ int main(int argc, char *const argv[])
 	while ((cmd = fgets(line, sizeof(line), stdin)))
 		if ((ret = process(cmd)))
 			return 1;
-	printf("\n");
+	putchar('\n');
 	return 0;
 }
