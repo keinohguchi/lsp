@@ -11,6 +11,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
+#include <netinet/in.h>
 
 #ifndef NR_OPEN
 #define NR_OPEN 1024
@@ -19,23 +20,25 @@
 static const char *progname;
 static struct parameter {
 	unsigned	timeout;
-	pid_t		ppid;
-	int		family;
+	int		daemon;
+	int		pfamily;
+	int		afamily;
 	int		type;
 	int		proto;
 	int		port;
 } param = {
 	.timeout	= 30,
-	.ppid		= 0,
-	.family		= PF_INET,
+	.daemon		= 0,
+	.pfamily	= PF_INET,
+	.afamily	= AF_INET,
 	.type		= SOCK_STREAM,
 	.proto		= 0,
 	.port		= 9999,
 };
-static const char *const opts = "t:P:h";
+static const char *const opts = "t:dP:h";
 static const struct option lopts[] = {
 	{"timeout",	required_argument,	NULL,	't'},
-	{"ppid",	required_argument,	NULL,	'P'},
+	{"daemon",	no_argument,		NULL,	'd'},
 	{"help",	no_argument,		NULL,	'h'},
 	{NULL,		0,			NULL,	0},
 };
@@ -54,8 +57,8 @@ static void usage(FILE *stream, int status)
 			fprintf(stream, "\tserver inactivity timeout (default: %us)\n",
 				p->timeout);
 			break;
-		case 'P':
-			fprintf(stream, "\tparent PID(PPID) to report the server's PID\n");
+		case 'd':
+			fprintf(stream, "\tdaemonize the server\n");
 			break;
 		case 'h':
 			fprintf(stream, "\tdisplay this message and exit\n");
@@ -73,23 +76,17 @@ static int init_daemon(const struct parameter *restrict p)
 	int i, ret, fd = -1;
 	pid_t pid;
 
+	if (!p->daemon)
+		return 0;
+
 	pid = fork();
 	if (pid == -1) {
 		perror("fork");
 		return -1;
-	} else if (pid) {
-		int status = EXIT_SUCCESS;
-		if (p->ppid) {
-			/* report the child PID */
-			const union sigval val = { .sival_int = (int)pid};
-			ret = sigqueue(p->ppid, SIGCHLD, val);
-			if (ret == -1) {
-				perror("sigqueue(SIGCHLD)");
-				status = EXIT_FAILURE;
-			}
-		}
-		exit(status);
-	}
+	} else if (pid)
+		/* parent */
+		exit(EXIT_SUCCESS);
+
 	/* child */
 	ret = setsid();
 	if (ret == -1) {
@@ -170,6 +167,44 @@ static int init_timeout(const struct parameter *restrict p)
 	return 0;
 }
 
+static int init_socket(const struct parameter *restrict p)
+{
+	struct sockaddr_in sin;
+	int s, ret, opt;
+
+	s = socket(p->pfamily, p->type, p->proto);
+	if (s == -1) {
+		perror("socket");
+		ret = -1;
+		goto err;
+	}
+	opt = 1;
+	ret = setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+	if (ret == -1) {
+		perror("setsockopt(SO_REUSEADDR)");
+		goto err;
+	}
+	sin.sin_family = p->afamily;
+	sin.sin_addr.s_addr = 0;
+	sin.sin_port = htons(p->port);
+	ret = bind(s, (struct sockaddr *)&sin, sizeof(sin));
+	if (ret == -1) {
+		perror("bind");
+		goto err;
+	}
+	ret = listen(s, 5);
+	if (ret == -1) {
+		perror("listen");
+		goto err;
+	}
+	return s;
+err:
+	if (s != -1)
+		if (close(s))
+			ret = -1;
+	return ret;
+}
+
 static int init(const struct parameter *restrict p)
 {
 	int ret;
@@ -183,13 +218,13 @@ static int init(const struct parameter *restrict p)
 	ret = init_timeout(p);
 	if (ret == -1)
 		return ret;
-	return 0;
+	return init_socket(p);
 }
 
 int main(int argc, char *argv[])
 {
 	struct parameter *p = &param;
-	int ret, opt, status;
+	int ret, opt;
 	int s = -1;
 
 	progname = argv[0];
@@ -202,11 +237,8 @@ int main(int argc, char *argv[])
 				usage(stderr, EXIT_FAILURE);
 			p->timeout = val;
 			break;
-		case 'P':
-			val = strtol(optarg, NULL, 10);
-			if (val <= 0 || val >= LONG_MAX)
-				usage(stderr, EXIT_FAILURE);
-			p->ppid = val;
+		case 'd':
+			p->daemon = 1;
 			break;
 		case 'h':
 			usage(stdout, EXIT_SUCCESS);
@@ -222,30 +254,30 @@ int main(int argc, char *argv[])
 		goto out;
 
 	/* light the fire */
-	s = socket(p->family, p->type, p->proto);
-	if (s != -1) {
-		ret = -1;
-		if (close(ret))
-			perror("close");
-	}
-	/* signal the status to the process if specified */
-	if (p->ppid) {
-		const union sigval val = { .sival_int = ret ? 1 : 0 };
-		ret = sigqueue(p->ppid, SIGCHLD, val);
-		if (ret == -1) {
-			perror("sigqueue");
-			status = 1;
-		}
-	}
-	/* wait for the timeout for now */
-	while ((ret = pause()))
-		if (errno == EINTR) {
-			status = 0;
+	s = ret;
+	while (1) {
+		struct sockaddr_in client;
+		socklen_t slen = sizeof(client);
+		int csock;
+
+		csock = accept(s, (struct sockaddr *)&client, &slen);
+		if (csock == -1) {
+			if (errno == EINTR) {
+				ret = 0;
+				break;
+			}
+			perror("accept");
+			ret = -1;
 			break;
 		}
+	}
 out:
-	status = 0;
+	if (s != -1) {
+		ret = -1;
+		if (close(s))
+			perror("close");
+	}
 	if (ret)
-		status = 1;
-	return status;
+		return 1;
+	return 0;
 }
