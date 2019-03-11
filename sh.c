@@ -9,7 +9,6 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <linux/limits.h>
 
 #ifndef ARG_MAX
 #define ARG_MAX 1024
