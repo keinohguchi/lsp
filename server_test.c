@@ -12,22 +12,23 @@ int main(void)
 	char *const target = realpath("./server", NULL);
 	const struct test {
 		const char	*const name;
-		char		*const argv[4];
+		char		*const argv[6];
 		int		want;
-		int		daemonize;
-		int		daemon_want;
 	} *t, tests[] = {
 		{
 			.name		= "-h option",
 			.argv		= {target, "-h", NULL},
 			.want		= 0,
-			.daemonize	= 0,
 		},
 		{
 			.name		= "1sec timeout",
 			.argv		= {target, "-t", "1", NULL},
 			.want		= 0,
-			.daemonize	= 0,
+		},
+		{
+			.name		= "100 listening backlog",
+			.argv		= {target, "-b", "100", "-t", "1", NULL},
+			.want		= 0,
 		},
 		{}, /* sentry */
 	};

@@ -20,6 +20,7 @@
 static const char *progname;
 static struct parameter {
 	unsigned	timeout;
+	unsigned	backlog;
 	int		daemon;
 	int		pfamily;
 	int		afamily;
@@ -28,6 +29,7 @@ static struct parameter {
 	int		port;
 } param = {
 	.timeout	= 30,
+	.backlog	= 5,
 	.daemon		= 0,
 	.pfamily	= PF_INET,
 	.afamily	= AF_INET,
@@ -35,9 +37,10 @@ static struct parameter {
 	.proto		= 0,
 	.port		= 9999,
 };
-static const char *const opts = "t:dP:h";
+static const char *const opts = "t:b:dh";
 static const struct option lopts[] = {
 	{"timeout",	required_argument,	NULL,	't'},
+	{"backlog",	required_argument,	NULL,	'b'},
 	{"daemon",	no_argument,		NULL,	'd'},
 	{"help",	no_argument,		NULL,	'h'},
 	{NULL,		0,			NULL,	0},
@@ -56,6 +59,10 @@ static void usage(FILE *stream, int status)
 		case 't':
 			fprintf(stream, "\tserver inactivity timeout (default: %us)\n",
 				p->timeout);
+			break;
+		case 'b':
+			fprintf(stream, "\tserver listen backlog (default: %d)\n",
+				p->backlog);
 			break;
 		case 'd':
 			fprintf(stream, "\tdaemonize the server\n");
@@ -192,7 +199,7 @@ static int init_socket(const struct parameter *restrict p)
 		perror("bind");
 		goto err;
 	}
-	ret = listen(s, 5);
+	ret = listen(s, p->backlog);
 	if (ret == -1) {
 		perror("listen");
 		goto err;
@@ -237,6 +244,11 @@ int main(int argc, char *argv[])
 				usage(stderr, EXIT_FAILURE);
 			p->timeout = val;
 			break;
+		case 'b':
+			val = strtol(optarg, NULL, 10);
+			if (val <= 0 || val >= LONG_MAX)
+				usage(stderr, EXIT_FAILURE);
+			p->backlog = val;
 		case 'd':
 			p->daemon = 1;
 			break;
