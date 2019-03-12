@@ -12,7 +12,7 @@ int main(void)
 	char *const target = realpath("./server", NULL);
 	const struct test {
 		const char	*const name;
-		char		*const argv[6];
+		char		*const argv[7];
 		int		want;
 	} *t, tests[] = {
 		{
@@ -21,13 +21,28 @@ int main(void)
 			.want		= 0,
 		},
 		{
-			.name		= "1sec timeout",
+			.name		= "single threaded 1sec timeout ",
+			.argv		= {target, "-s", "-t", "1", NULL},
+			.want		= 0,
+		},
+		{
+			.name		= "single threaded 100 listening backlog",
+			.argv		= {target, "-s", "-b", "100", "-t", "1", NULL},
+			.want		= 0,
+		},
+		{
+			.name		= "multi threaded 1sec timeout ",
 			.argv		= {target, "-t", "1", NULL},
 			.want		= 0,
 		},
 		{
-			.name		= "100 listening backlog",
+			.name		= "multi threaded 100 listening backlog",
 			.argv		= {target, "-b", "100", "-t", "1", NULL},
+			.want		= 0,
+		},
+		{
+			.name		= "multi threaded 1000 listening backlog",
+			.argv		= {target, "-b", "1000", "-t", "1", NULL},
 			.want		= 0,
 		},
 		{}, /* sentry */

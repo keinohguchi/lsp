@@ -9,6 +9,8 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <unistd.h>
+#include <pthread.h>
+#include <semaphore.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
@@ -19,40 +21,13 @@
 #define NR_OPEN 1024
 #endif /* NR_OPEN */
 
-static const char *progname;
-static struct parameter {
-	unsigned	timeout;
-	unsigned	backlog;
-	int		daemon;
-	int		pfamily;
-	int		afamily;
-	int		type;
-	int		proto;
-	int		port;
-	FILE		*output;
-} param = {
-	.timeout	= 30,
-	.backlog	= 5,
-	.daemon		= 0,
-	.pfamily	= PF_INET,
-	.afamily	= AF_INET,
-	.type		= SOCK_STREAM,
-	.proto		= 0,
-	.port		= 9999,
-};
-static const char *const opts = "t:b:dh";
-static const struct option lopts[] = {
-	{"timeout",	required_argument,	NULL,	't'},
-	{"backlog",	required_argument,	NULL,	'b'},
-	{"daemon",	no_argument,		NULL,	'd'},
-	{"help",	no_argument,		NULL,	'h'},
-	{NULL,		0,			NULL,	0},
-};
-
 struct client {
 	struct server		*top;
 	int			sd;
 	struct sockaddr_in	addr;
+	pthread_t		tid;
+	pthread_cond_t		cond;
+	pthread_mutex_t		lock;
 };
 
 static struct server {
@@ -60,9 +35,45 @@ static struct server {
 	int			sd;
 	int			cindex;
 	struct client		*clients;
+	sem_t			sem;
 } server = {
 	.sd	= -1,
 	.cindex	= 0,
+};
+
+static const char *progname;
+static struct parameter {
+	unsigned	timeout;
+	unsigned	backlog;
+	int		daemon;
+	int		single;
+	int		pfamily;
+	int		afamily;
+	int		type;
+	int		proto;
+	int		port;
+	struct client	*(*fetch)(struct server *);
+	int		(*process)(struct client *);
+	FILE		*output;
+} param = {
+	.timeout	= 30,
+	.backlog	= 5,
+	.daemon		= 0,
+	.single		= 0,
+	.pfamily	= PF_INET,
+	.afamily	= AF_INET,
+	.type		= SOCK_STREAM,
+	.proto		= 0,
+	.port		= 9999,
+};
+static const char *const opts = "t:b:dsh";
+static const struct option lopts[] = {
+	{"timeout",	required_argument,	NULL,	't'},
+	{"backlog",	required_argument,	NULL,	'b'},
+	{"daemon",	no_argument,		NULL,	'd'},
+	{"single",	no_argument,		NULL,	's'},
+	{"help",	no_argument,		NULL,	'h'},
+	{NULL,		0,			NULL,	0},
 };
 
 static void usage(FILE *stream, int status)
@@ -85,6 +96,9 @@ static void usage(FILE *stream, int status)
 			break;
 		case 'd':
 			fprintf(stream, "\tdaemonize the server\n");
+			break;
+		case 's':
+			fprintf(stream, "\tsingle threaded server\n");
 			break;
 		case 'h':
 			fprintf(stream, "\tdisplay this message and exit\n");
@@ -268,6 +282,8 @@ err:
 	return ret;
 }
 
+static void *worker(void *arg);
+
 static int init_server(const struct parameter *restrict p)
 {
 	struct server *s = &server;
@@ -293,6 +309,38 @@ static int init_server(const struct parameter *restrict p)
 		goto err;
 	s->sd = ret;
 	s->p = p;
+	if (p->single)
+		/* single threaded */
+		return 0;
+
+	/* multithreaded */
+	ret = sem_init(&s->sem, 0, p->backlog);
+	if (ret == -1) {
+		perror("sem_init");
+		goto err;
+	}
+	c = s->clients;
+	for (i = 0; i < p->backlog; i++) {
+		ret = pthread_mutex_init(&c->lock, NULL);
+		if (ret) {
+			errno = ret;
+			perror("pthread_mutex_init");
+			goto err;
+		}
+		ret = pthread_cond_init(&c->cond, NULL);
+		if (ret) {
+			errno = ret;
+			perror("pthread_cond_init");
+			goto err;
+		}
+		ret = pthread_create(&c->tid, NULL, worker, c);
+		if (ret) {
+			errno = ret;
+			perror("pthread_create");
+			goto err;
+		}
+		c++;
+	}
 	return 0;
 err:
 	if (s->clients)
@@ -395,6 +443,146 @@ out:
 	return ret;
 }
 
+static void *worker(void *arg)
+{
+	struct client *ctx = arg;
+	struct server *s = ctx->top;
+	int ret;
+
+	while (1) {
+		ret = pthread_mutex_lock(&ctx->lock);
+		if (ret) {
+			if (ret == EINTR) {
+				ret = 0;
+				goto out;
+			}
+			errno = ret;
+			perror("pthread_mutex_lock");
+			continue;
+		}
+		while (ctx->sd == -1) {
+			ret = pthread_cond_wait(&ctx->cond, &ctx->lock);
+			if (ret) {
+				if (ret == EINTR) {
+					ret = 0;
+					goto out;
+				}
+				errno = ret;
+				perror("pthread_cond_wait");
+				continue;
+			}
+		}
+		if (process(ctx) == -1)
+			; /* ignore for now... */
+
+		ret = pthread_mutex_unlock(&ctx->lock);
+		if (ret) {
+			if (ret == EINTR) {
+				ret = 0;
+				goto out;
+			}
+		}
+		ret = sem_post(&s->sem);
+		if (ret == -1) {
+			if (ret == EINTR) {
+				ret = 0;
+				goto out;
+			}
+			perror("sem_post");
+		}
+	}
+out:
+	if (ret)
+		return (void *)EXIT_FAILURE;
+	return NULL;
+}
+
+static struct client *fetch_multi(struct server *s)
+{
+	const struct parameter *const p = s->p;
+	char buf[BUFSIZ];
+	struct client *c;
+	socklen_t len;
+	int i, ret;
+
+fetch:
+	while ((ret = sem_wait(&s->sem)))
+		if (errno == EINTR)
+			return NULL;
+	for (i = 0; i < p->backlog; i++) {
+		c = &s->clients[(s->cindex+i)%p->backlog];
+		ret = pthread_mutex_trylock(&c->lock);
+		if (ret)
+			continue;
+		break;
+	}
+	if (i == p->backlog)
+		goto fetch;
+accept:
+	len = sizeof(c->addr);
+	ret = accept(s->sd, (struct sockaddr *)&c->addr, &len);
+	if (ret == -1) {
+		/* canceled */
+		if (errno == EINTR) {
+			if ((ret = pthread_mutex_unlock(&c->lock))) {
+				errno = ret;
+				perror("pthread_mutex_unlock");
+			}
+			return NULL;
+		}
+		perror("accept");
+		goto accept;
+	}
+	c->sd = ret;
+	fprintf(p->output, "from %s:%d\n",
+		inet_ntop(p->afamily, &c->addr.sin_addr, buf, sizeof(buf)),
+		ntohs(c->addr.sin_port));
+	/* for the next fetch */
+	s->cindex = (s->cindex+1)%p->backlog;
+	return c;
+}
+
+static int process_multi(struct client *ctx)
+{
+	int ret;
+
+	ret = pthread_mutex_unlock(&ctx->lock);
+	if (ret) {
+		errno = ret;
+		perror("pthread_mutex_unlock");
+		return -1;
+	}
+	ret = pthread_cond_signal(&ctx->cond);
+	if (ret) {
+		errno = ret;
+		perror("pthread_cond_signal");
+		return -1;
+	}
+	return 0;
+}
+
+static void term(struct server *ctx)
+{
+	const struct parameter *const p = ctx->p;
+	struct client *c;
+	int i, ret;
+
+	c = ctx->clients;
+	for (i = 0; i < p->backlog; i++) {
+		ret = pthread_cancel(c->tid);
+		if (ret) {
+			errno = ret;
+			perror("pthread_cancel");
+		}
+	}
+	ret = sem_destroy(&ctx->sem);
+	if (ret == -1)
+		perror("sem_destroy");
+	if (ctx->sd != -1)
+		if (close(ctx->sd))
+			perror("close");
+}
+
 int main(int argc, char *argv[])
 {
 	struct parameter *p = &param;
@@ -404,6 +592,8 @@ int main(int argc, char *argv[])
 
 	progname = argv[0];
 	p->output = stdout;
+	p->fetch = fetch_multi;
+	p->process = process_multi;
 	while ((opt = getopt_long(argc, argv, opts, lopts, NULL)) != -1) {
 		long val;
 		switch (opt) {
@@ -418,8 +608,14 @@ int main(int argc, char *argv[])
 			if (val <= 0 || val >= LONG_MAX)
 				usage(stderr, EXIT_FAILURE);
 			p->backlog = val;
+			break;
 		case 'd':
 			p->daemon = 1;
+			break;
+		case 's':
+			p->single = 0;
+			p->fetch = fetch;
+			p->process = process;
 			break;
 		case 'h':
 			usage(stdout, EXIT_SUCCESS);
@@ -435,13 +631,11 @@ int main(int argc, char *argv[])
 		goto out;
 
 	/* light the fire */
-	while ((c = fetch(s)))
-	       if ((ret = process(c)))
+	while ((c = (*p->fetch)(s)))
+	       if ((ret = (*p->process)(c)))
 		       goto out;
 out:
-	if (s->sd != -1)
-		if (close(s->sd))
-			perror("close");
+	term(s);
 	if (ret)
 		return 1;
 	return 0;
