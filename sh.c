@@ -80,6 +80,9 @@ static int init_io(int fd)
 {
 	int ret;
 
+	/* setup the handler before owning the file descriptor
+	 * to make sure we always receives the SIGIO. */
+	signal(SIGIO, io_handler);
 	ret = fcntl(fd, F_GETFL);
 	if (ret == -1) {
 		perror("fcntl(F_GETFL)");
@@ -95,7 +98,6 @@ static int init_io(int fd)
 		perror("fcntl(F_SETOWN)");
 		return -1;
 	}
-	signal(SIGIO, io_handler);
 	return 0;
 }
 
