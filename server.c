@@ -5,6 +5,7 @@
 #include <getopt.h>
 #include <limits.h>
 #include <signal.h>
+#include <ctype.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <unistd.h>
@@ -110,17 +111,17 @@ static int init_daemon(const struct parameter *restrict p)
 		close(i);
 	fd = open("/dev/null", O_RDWR);
 	if (fd == -1) {
-		perror("open(/dev/null)");
+		perror("open");
 		return -1;
 	}
-	ret = dup2(fd, STDOUT_FILENO);
+	ret = dup(fd);
 	if (ret == -1) {
-		perror("dup2(/dev/null, STDOUT_FILENO)");
+		perror("dup");
 		goto err;
 	}
-	ret = dup2(fd, STDERR_FILENO);
+	ret = dup(fd);
 	if (ret == -1) {
-		perror("dup2(/dev/null, STDERR_FILENO)");
+		perror("dup");
 		goto err;
 	}
 	/* daemon now */
@@ -229,16 +230,23 @@ static int init(const struct parameter *restrict p)
 	return init_socket(p);
 }
 
-static void dump(FILE *stream, const unsigned char *restrict buf, size_t len)
+static void dump(FILE *s, const unsigned char *restrict buf, size_t len)
 {
-	unsigned char byte;
-	int i;
+	int i, j, width = 16;
 
 	for (i = 0; i < len; i++) {
-		byte = buf[i];
-		fprintf(stream, "%02x ", byte);
-		if (i%16 == 15 || i+1 == len)
-			fprintf(stream, "\n");
+		fprintf(s, "%02x ", buf[i]);
+		/* check if we are done for this line */
+		if (i%width == (width-1) || i+1 == len) {
+			/* fill the gap */
+			for (j = (i%width); j < (width-1); j++)
+				fprintf(s, "   ");
+			/* ascii print */
+			fprintf(s, "| ");
+			for (j = i-(i%width); j <= i; j++)
+				fprintf(s, "%c", isprint(buf[j]) ? buf[j] : '.');
+			fprintf(s, "\n");
+		}
 	}
 }
 
@@ -300,7 +308,7 @@ int main(int argc, char *argv[])
 		}
 		fprintf(stream, "ACCEPT: %s:%d\n", inet_ntop(p->afamily, &client, buf, slen),
 			ntohs(client.sin_port));
-		ret = snprintf(buf, sizeof(buf), "Hello World\n");
+		ret = snprintf(buf, sizeof(buf), "Hello, World!\n");
 		if (ret < 0)
 			perror("snprintf");
 		ret = send(c, buf, strlen(buf), 0);
