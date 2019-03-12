@@ -381,6 +381,11 @@ static int process(struct client *c)
 	while (ret > 0) {
 		reset_timer(p);
 		dump(p->output, (unsigned char *)buf, ret);
+		if (ret == 1 && buf[0] == 4) {
+			/* EOT, End Of Transmission */
+			ret = 0;
+			break;
+		}
 		ret = recv(c->sd, buf, sizeof(buf), 0);
 	}
 out:
