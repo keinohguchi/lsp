@@ -135,28 +135,31 @@ err:
 
 static void timeout_action(int signo, siginfo_t *si, void *tcontext)
 {
+	if (signo != SIGALRM)
+		return;
 	exit(EXIT_SUCCESS);
 }
 
 static int init_signal(void)
 {
-	struct sigaction alrm = {
+	const struct parameter *p = &param;
+	struct sigaction sa = {
 		.sa_flags	= SA_SIGINFO,
 		.sa_sigaction	= timeout_action,
 	};
 	int ret;
 
-	ret = sigemptyset(&alrm.sa_mask);
+	/* nothing to do in case of no timeout */
+	if (!p->timeout)
+		return 0;
+
+	/* for SIGALRM */
+	ret = sigemptyset(&sa.sa_mask);
 	if (ret == -1) {
 		perror("sigemptyset");
 		return ret;
 	}
-	ret = sigaddset(&alrm.sa_mask, SIGIO);
-	if (ret == -1) {
-		perror("sigaddset(SIGIO)");
-		return ret;
-	}
-	ret = sigaction(SIGALRM, &alrm, NULL);
+	ret = sigaction(SIGALRM, &sa, NULL);
 	if (ret == -1) {
 		perror("sigaction(SIGALRM)");
 		return ret;
@@ -164,7 +167,7 @@ static int init_signal(void)
 	return 0;
 }
 
-static int init_timeout(const struct parameter *restrict p)
+static int init_timer(const struct parameter *restrict p)
 {
 	unsigned timeout_remain = p->timeout;
 
@@ -173,6 +176,40 @@ static int init_timeout(const struct parameter *restrict p)
 	while (timeout_remain)
 		timeout_remain = alarm(timeout_remain);
 
+	return 0;
+}
+
+static int reset_timer(const struct parameter *restrict p)
+{
+	sigset_t mask;
+	int ret;
+
+	if (!p->timeout)
+		return 1;
+
+	ret = sigemptyset(&mask);
+	if (ret == -1) {
+		perror("sigemptymask");
+		return -1;
+	}
+	ret = sigaddset(&mask, SIGALRM);
+	if (ret == -1) {
+		perror("sigaddset");
+		return -1;
+	}
+	ret = sigprocmask(SIG_BLOCK, &mask, NULL);
+	if (ret == -1) {
+		perror("sigprocmask");
+		return -1;
+	}
+	ret = init_timer(p);
+	if (ret == -1)
+		return -1;
+	ret = sigprocmask(SIG_UNBLOCK, &mask, NULL);
+	if (ret == -1) {
+		perror("sigprocmask");
+		return -1;
+	}
 	return 0;
 }
 
@@ -224,7 +261,7 @@ static int init(const struct parameter *restrict p)
 	ret = init_signal();
 	if (ret == -1)
 		return ret;
-	ret = init_timeout(p);
+	ret = init_timer(p);
 	if (ret == -1)
 		return ret;
 	return init_socket(p);
@@ -299,6 +336,7 @@ int main(int argc, char *argv[])
 		c = accept(s, (struct sockaddr *)&client, &slen);
 		if (c == -1) {
 			if (errno == EINTR) {
+				/* timeout */
 				ret = 0;
 				break;
 			}
@@ -306,7 +344,8 @@ int main(int argc, char *argv[])
 			ret = -1;
 			break;
 		}
-		fprintf(stream, "ACCEPT: %s:%d\n", inet_ntop(p->afamily, &client, buf, slen),
+		fprintf(stream, "From %s:%d\n",
+			inet_ntop(p->afamily, &client.sin_addr, buf, slen),
 			ntohs(client.sin_port));
 		ret = snprintf(buf, sizeof(buf), "Hello, World!\n");
 		if (ret < 0)
@@ -319,17 +358,19 @@ int main(int argc, char *argv[])
 			perror("recv");
 		while (ret > 0) {
 			dump(stream, (unsigned char *)buf, ret);
+			ret = reset_timer(p);
+			if (ret == -1)
+				goto client_close;
 			ret = recv(c, buf, sizeof(buf), 0);
 		}
+client_close:
 		if (close(c))
 			perror("close");
 	}
 out:
-	if (s != -1) {
-		ret = -1;
+	if (s != -1)
 		if (close(s))
 			perror("close");
-	}
 	if (ret)
 		return 1;
 	return 0;
