@@ -51,17 +51,17 @@ static const struct option lopts[] = {
 
 struct client {
 	struct server		*top;
-	int			sock;
+	int			sd;
 	struct sockaddr_in	addr;
 };
 
 static struct server {
 	const struct parameter	*p;
-	int			sock;
+	int			sd;
 	int			cindex;
 	struct client		*clients;
 } server = {
-	.sock	= -1,
+	.sd	= -1,
 	.cindex	= 0,
 };
 
@@ -233,16 +233,16 @@ static int reset_timer(const struct parameter *restrict p)
 static int init_socket(const struct parameter *restrict p)
 {
 	struct sockaddr_in sin;
-	int s, ret, opt;
+	int sd, ret, opt;
 
-	s = socket(p->pfamily, p->type, p->proto);
-	if (s == -1) {
+	sd = socket(p->pfamily, p->type, p->proto);
+	if (sd == -1) {
 		perror("socket");
 		ret = -1;
 		goto err;
 	}
 	opt = 1;
-	ret = setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+	ret = setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 	if (ret == -1) {
 		perror("setsockopt(SO_REUSEADDR)");
 		goto err;
@@ -250,20 +250,20 @@ static int init_socket(const struct parameter *restrict p)
 	sin.sin_family = p->afamily;
 	sin.sin_addr.s_addr = 0;
 	sin.sin_port = htons(p->port);
-	ret = bind(s, (struct sockaddr *)&sin, sizeof(sin));
+	ret = bind(sd, (struct sockaddr *)&sin, sizeof(sin));
 	if (ret == -1) {
 		perror("bind");
 		goto err;
 	}
-	ret = listen(s, p->backlog);
+	ret = listen(sd, p->backlog);
 	if (ret == -1) {
 		perror("listen");
 		goto err;
 	}
-	return s;
+	return sd;
 err:
-	if (s != -1)
-		if (close(s))
+	if (sd != -1)
+		if (close(sd))
 			ret = -1;
 	return ret;
 }
@@ -285,13 +285,13 @@ static int init_server(const struct parameter *restrict p)
 	for (i = 0; i < p->backlog; i++) {
 		memset(&c->addr, 0, sizeof(c->addr));
 		c->top = s;
-		c->sock = -1;
+		c->sd = -1;
 		c++;
 	}
 	ret = init_socket(p);
 	if (ret == -1)
 		goto err;
-	s->sock = ret;
+	s->sd = ret;
 	s->p = p;
 	return 0;
 err:
@@ -347,7 +347,7 @@ static struct client *fetch(struct server *s)
 	c = &s->clients[s->cindex];
 	len = sizeof(c->addr);
 again:
-	ret = accept(s->sock, (struct sockaddr *)&c->addr, &len);
+	ret = accept(s->sd, (struct sockaddr *)&c->addr, &len);
 	if (ret == -1) {
 		/* canceled */
 		if (errno == EINTR)
@@ -355,7 +355,7 @@ again:
 		perror("accept");
 		goto again;
 	}
-	c->sock = ret;
+	c->sd = ret;
 	fprintf(p->output, "from %s:%d\n",
 		inet_ntop(p->afamily, &c->addr.sin_addr, buf, sizeof(buf)),
 		ntohs(c->addr.sin_port));
@@ -372,21 +372,21 @@ static int process(struct client *c)
 	int ret;
 
 	snprintf(buf, sizeof(buf), "Hello, World!\n");
-	ret = send(c->sock, buf, strlen(buf), 0);
+	ret = send(c->sd, buf, strlen(buf), 0);
 	if (ret == -1) {
 		perror("send");
 		goto out;
 	}
-	ret = recv(c->sock, buf, sizeof(buf), 0);
+	ret = recv(c->sd, buf, sizeof(buf), 0);
 	while (ret > 0) {
 		reset_timer(p);
 		dump(p->output, (unsigned char *)buf, ret);
-		ret = recv(c->sock, buf, sizeof(buf), 0);
+		ret = recv(c->sd, buf, sizeof(buf), 0);
 	}
 out:
-	if (close(c->sock))
+	if (close(c->sd))
 		perror("close");
-	c->sock = -1;
+	c->sd = -1;
 	return ret;
 }
 
@@ -434,8 +434,8 @@ int main(int argc, char *argv[])
 	       if ((ret = process(c)))
 		       goto out;
 out:
-	if (s->sock != -1)
-		if (close(s->sock))
+	if (s->sd != -1)
+		if (close(s->sd))
 			perror("close");
 	if (ret)
 		return 1;
