@@ -12,6 +12,7 @@
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 
 #ifndef NR_OPEN
 #define NR_OPEN 1024
@@ -228,6 +229,19 @@ static int init(const struct parameter *restrict p)
 	return init_socket(p);
 }
 
+static void dump(FILE *stream, const unsigned char *restrict buf, size_t len)
+{
+	unsigned char byte;
+	int i;
+
+	for (i = 0; i < len; i++) {
+		byte = buf[i];
+		fprintf(stream, "%02x ", byte);
+		if (i%16 == 15 || i+1 == len)
+			fprintf(stream, "\n");
+	}
+}
+
 int main(int argc, char *argv[])
 {
 	struct parameter *p = &param;
@@ -270,10 +284,12 @@ int main(int argc, char *argv[])
 	while (1) {
 		struct sockaddr_in client;
 		socklen_t slen = sizeof(client);
-		int csock;
+		FILE *stream = stdout;
+		char buf[BUFSIZ];
+		int c;
 
-		csock = accept(s, (struct sockaddr *)&client, &slen);
-		if (csock == -1) {
+		c = accept(s, (struct sockaddr *)&client, &slen);
+		if (c == -1) {
 			if (errno == EINTR) {
 				ret = 0;
 				break;
@@ -282,6 +298,23 @@ int main(int argc, char *argv[])
 			ret = -1;
 			break;
 		}
+		fprintf(stream, "ACCEPT: %s:%d\n", inet_ntop(p->afamily, &client, buf, slen),
+			ntohs(client.sin_port));
+		ret = snprintf(buf, sizeof(buf), "Hello World\n");
+		if (ret < 0)
+			perror("snprintf");
+		ret = send(c, buf, strlen(buf), 0);
+		if (ret == -1)
+			perror("send");
+		ret = recv(c, buf, sizeof(buf), 0);
+		if (ret == -1)
+			perror("recv");
+		while (ret > 0) {
+			dump(stream, (unsigned char *)buf, ret);
+			ret = recv(c, buf, sizeof(buf), 0);
+		}
+		if (close(c))
+			perror("close");
 	}
 out:
 	if (s != -1) {
