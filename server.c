@@ -29,6 +29,7 @@ static struct parameter {
 	int		type;
 	int		proto;
 	int		port;
+	FILE		*output;
 } param = {
 	.timeout	= 30,
 	.backlog	= 5,
@@ -46,6 +47,22 @@ static const struct option lopts[] = {
 	{"daemon",	no_argument,		NULL,	'd'},
 	{"help",	no_argument,		NULL,	'h'},
 	{NULL,		0,			NULL,	0},
+};
+
+struct client {
+	struct server		*top;
+	int			sock;
+	struct sockaddr_in	addr;
+};
+
+static struct server {
+	const struct parameter	*p;
+	int			sock;
+	int			cindex;
+	struct client		*clients;
+} server = {
+	.sock	= -1,
+	.cindex	= 0,
 };
 
 static void usage(FILE *stream, int status)
@@ -251,6 +268,38 @@ err:
 	return ret;
 }
 
+static int init_server(const struct parameter *restrict p)
+{
+	struct server *s = &server;
+	struct client *c;
+	int i, ret;
+
+	memset(s, 0, sizeof(struct server));
+	c = calloc(p->backlog, sizeof(struct client));
+	if (c == NULL) {
+		perror("calloc");
+		return -1;
+	}
+	s->cindex = 0;
+	s->clients = c;
+	for (i = 0; i < p->backlog; i++) {
+		memset(&c->addr, 0, sizeof(c->addr));
+		c->top = s;
+		c->sock = -1;
+		c++;
+	}
+	ret = init_socket(p);
+	if (ret == -1)
+		goto err;
+	s->sock = ret;
+	s->p = p;
+	return 0;
+err:
+	if (s->clients)
+		free(s->clients);
+	return -1;
+}
+
 static int init(const struct parameter *restrict p)
 {
 	int ret;
@@ -264,7 +313,7 @@ static int init(const struct parameter *restrict p)
 	ret = init_timer(p);
 	if (ret == -1)
 		return ret;
-	return init_socket(p);
+	return init_server(p);
 }
 
 static void dump(FILE *s, const unsigned char *restrict buf, size_t len)
@@ -287,13 +336,69 @@ static void dump(FILE *s, const unsigned char *restrict buf, size_t len)
 	}
 }
 
+static struct client *fetch(struct server *s)
+{
+	const struct parameter *const p = s->p;
+	char buf[BUFSIZ];
+	struct client *c;
+	socklen_t len;
+	int ret;
+
+	c = &s->clients[s->cindex];
+	len = sizeof(c->addr);
+again:
+	ret = accept(s->sock, (struct sockaddr *)&c->addr, &len);
+	if (ret == -1) {
+		/* canceled */
+		if (errno == EINTR)
+			return NULL;
+		perror("accept");
+		goto again;
+	}
+	c->sock = ret;
+	fprintf(p->output, "from %s:%d\n",
+		inet_ntop(p->afamily, &c->addr.sin_addr, buf, sizeof(buf)),
+		ntohs(c->addr.sin_port));
+	/* for the next fetch */
+	s->cindex = (s->cindex+1)%p->backlog;
+	return c;
+}
+
+static int process(struct client *c)
+{
+	const struct server *s = c->top;
+	const struct parameter *const p = s->p;
+	char buf[BUFSIZ];
+	int ret;
+
+	snprintf(buf, sizeof(buf), "Hello, World!\n");
+	ret = send(c->sock, buf, strlen(buf), 0);
+	if (ret == -1) {
+		perror("send");
+		goto out;
+	}
+	ret = recv(c->sock, buf, sizeof(buf), 0);
+	while (ret > 0) {
+		reset_timer(p);
+		dump(p->output, (unsigned char *)buf, ret);
+		ret = recv(c->sock, buf, sizeof(buf), 0);
+	}
+out:
+	if (close(c->sock))
+		perror("close");
+	c->sock = -1;
+	return ret;
+}
+
 int main(int argc, char *argv[])
 {
 	struct parameter *p = &param;
+	struct server *s = &server;
+	struct client *c;
 	int ret, opt;
-	int s = -1;
 
 	progname = argv[0];
+	p->output = stdout;
 	while ((opt = getopt_long(argc, argv, opts, lopts, NULL)) != -1) {
 		long val;
 		switch (opt) {
@@ -325,51 +430,12 @@ int main(int argc, char *argv[])
 		goto out;
 
 	/* light the fire */
-	s = ret;
-	while (1) {
-		struct sockaddr_in client;
-		socklen_t slen = sizeof(client);
-		FILE *stream = stdout;
-		char buf[BUFSIZ];
-		int c;
-
-		c = accept(s, (struct sockaddr *)&client, &slen);
-		if (c == -1) {
-			if (errno == EINTR) {
-				/* timeout */
-				ret = 0;
-				break;
-			}
-			perror("accept");
-			ret = -1;
-			break;
-		}
-		fprintf(stream, "From %s:%d\n",
-			inet_ntop(p->afamily, &client.sin_addr, buf, slen),
-			ntohs(client.sin_port));
-		ret = snprintf(buf, sizeof(buf), "Hello, World!\n");
-		if (ret < 0)
-			perror("snprintf");
-		ret = send(c, buf, strlen(buf), 0);
-		if (ret == -1)
-			perror("send");
-		ret = recv(c, buf, sizeof(buf), 0);
-		if (ret == -1)
-			perror("recv");
-		while (ret > 0) {
-			dump(stream, (unsigned char *)buf, ret);
-			ret = reset_timer(p);
-			if (ret == -1)
-				goto client_close;
-			ret = recv(c, buf, sizeof(buf), 0);
-		}
-client_close:
-		if (close(c))
-			perror("close");
-	}
+	while ((c = fetch(s)))
+	       if ((ret = process(c)))
+		       goto out;
 out:
-	if (s != -1)
-		if (close(s))
+	if (s->sock != -1)
+		if (close(s->sock))
 			perror("close");
 	if (ret)
 		return 1;
