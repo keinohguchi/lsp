@@ -20,6 +20,7 @@ PROGS += find
 PROGS += id
 PROGS += sh
 PROGS += server
+PROGS += httpd
 LIB       := liblsp.a
 LIB_SRCS  := ls.c
 LIB_OBJS  := $(patsubst %.c,%.o,$(LIB_SRCS))
