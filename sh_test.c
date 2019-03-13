@@ -40,7 +40,19 @@ int main(void)
 			.want	= 0,
 		},
 		{
+			.name	= "e command",
+			.argv	= {target, NULL},
+			.cmd	= "e\n",
+			.want	= 0,
+		},
+		{
 			.name	= "quit command",
+			.argv	= {target, NULL},
+			.cmd	= "quit\n",
+			.want	= 0,
+		},
+		{
+			.name	= "q command",
 			.argv	= {target, NULL},
 			.cmd	= "quit\n",
 			.want	= 0,
@@ -49,6 +61,12 @@ int main(void)
 			.name	= "version and exit command",
 			.argv	= {target, NULL},
 			.cmd	= "version\nexit\n",
+			.want	= 0,
+		},
+		{
+			.name	= "v and exit command",
+			.argv	= {target, NULL},
+			.cmd	= "v\nexit\n",
 			.want	= 0,
 		},
 		{

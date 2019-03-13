@@ -134,18 +134,17 @@ static int version_handler(char *const argv[])
 /* shell command and the handler */
 static const struct command {
 	const char	*const name;
+	const char	*const alias[2];
 	int		(*handler)(char *const argv[]);
 } cmds[] = {
 	{
 		.name		= "exit",
-		.handler	= exit_handler,
-	},
-	{
-		.name		= "quit",
+		.alias		= {"quit", NULL},
 		.handler	= exit_handler,
 	},
 	{
 		.name		= "version",
+		.alias		= {NULL},
 		.handler	= version_handler,
 	},
 	{}, /* sentry */
@@ -154,9 +153,14 @@ static const struct command {
 static const struct command *parse_command(char *argv0)
 {
 	const struct command *cmd;
-	for (cmd = cmds; cmd->name; cmd++)
-		if (!strcmp(argv0, cmd->name))
+	for (cmd = cmds; cmd->name; cmd++) {
+		int i;
+		if (!strncmp(argv0, cmd->name, strlen(argv0)))
 			return cmd;
+		for (i = 0; cmd->alias[i]; i++)
+			if (!strncmp(argv0, cmd->alias[i], strlen(argv0)))
+				return cmd;
+	}
 	return NULL;
 }
 
