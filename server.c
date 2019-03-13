@@ -288,7 +288,7 @@ static int init_server(const struct parameter *restrict p)
 {
 	struct server *s = &server;
 	struct client *c;
-	int i, ret;
+	int i, j, ret;
 
 	memset(s, 0, sizeof(struct server));
 	c = calloc(p->backlog, sizeof(struct client));
@@ -306,7 +306,7 @@ static int init_server(const struct parameter *restrict p)
 	}
 	ret = init_socket(p);
 	if (ret == -1)
-		goto err;
+		goto err0;
 	s->sd = ret;
 	s->p = p;
 	if (p->single)
@@ -317,7 +317,7 @@ static int init_server(const struct parameter *restrict p)
 	ret = sem_init(&s->sem, 0, p->backlog);
 	if (ret == -1) {
 		perror("sem_init");
-		goto err;
+		goto err0;
 	}
 	c = s->clients;
 	for (i = 0; i < p->backlog; i++) {
@@ -325,24 +325,41 @@ static int init_server(const struct parameter *restrict p)
 		if (ret) {
 			errno = ret;
 			perror("pthread_mutex_init");
-			goto err;
+			goto err1;
 		}
 		ret = pthread_cond_init(&c->cond, NULL);
 		if (ret) {
 			errno = ret;
 			perror("pthread_cond_init");
-			goto err;
+			goto err1;
 		}
 		ret = pthread_create(&c->tid, NULL, worker, c);
 		if (ret) {
 			errno = ret;
 			perror("pthread_create");
-			goto err;
+			goto err1;
 		}
 		c++;
 	}
 	return 0;
-err:
+err1:
+	c = s->clients;
+	for (j = 0; j < i; j++) {
+		if ((ret = pthread_mutex_destroy(&c->lock))) {
+			errno = ret;
+			perror("pthread_mutex_destroy");
+		}
+		if ((ret = pthread_cond_destroy(&c->cond))) {
+			errno = ret;
+			perror("pthrad_cond_destroy");
+		}
+		if ((ret = pthread_cancel(c->tid))) {
+			errno = ret;
+			perror("pthread_cancel");
+		}
+		c++;
+	}
+err0:
 	if (s->clients)
 		free(s->clients);
 	return -1;
