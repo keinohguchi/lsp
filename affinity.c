@@ -58,7 +58,7 @@ int main(int argc, char *argv[])
 		{"help",	no_argument,		NULL,	'h'},
 		{"count",	required_argument,	NULL,	'c'},
 		{"list",	no_argument,		NULL,	'l'},
-		{},
+		{NULL,		0,			NULL,	0},
 	};
 	const char *opts = "c:hl";
 	cpu_set_t mask;

@@ -55,7 +55,7 @@ int main(void)
 			.name	= "1024 threads",
 			.argv	= {path, "-c", "1024", NULL},
 		},
-		{}, /* sentry */
+		{ .name = NULL }, /* sentry */
 	};
 
 	for (t = tests; t->name; t++) {

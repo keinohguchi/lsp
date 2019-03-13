@@ -95,7 +95,7 @@ int main(void)
 			.name	= "--file and --cpu options",
 			.argv	= {target, "--file", "--cpu", NULL},
 		},
-		{}, /* sentry */
+		{ .name = NULL }, /* sentry */
 	};
 	const struct test *t;
 

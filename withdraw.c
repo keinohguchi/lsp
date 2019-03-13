@@ -119,11 +119,11 @@ int main(int argc, char *argv[])
 {
 	const char *opts = "hc:d:w:";
 	const struct option lopts[] = {
-		{"count",	required_argument,	NULL, 'c'},
-		{"deposit",	required_argument,	NULL, 'd'},
-		{"withdraw",	required_argument,	NULL, 'w'},
-		{"help",	no_argument,		NULL, 'h'},
-		{}, /* sentry */
+		{"count",	required_argument,	NULL,	'c'},
+		{"deposit",	required_argument,	NULL,	'd'},
+		{"withdraw",	required_argument,	NULL,	'w'},
+		{"help",	no_argument,		NULL,	'h'},
+		{NULL,		0,			NULL,	0}, /* sentry */
 	};
 	struct withdrawer *warg, *wargs, *wret;
 	struct account *account;

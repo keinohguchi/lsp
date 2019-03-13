@@ -155,12 +155,12 @@ int main(int argc, char *argv[])
 {
 	const char *opts = "lgsrh";
 	struct option lopts[] = {
-		{"list",	no_argument,	NULL, 'l'},
-		{"get",		no_argument,	NULL, 'g'},
-		{"set",		no_argument,	NULL, 's'},
-		{"rm",		no_argument,	NULL, 'r'},
-		{"help",	no_argument,	NULL, 'h'},
-		{}, /* sentry */
+		{"list",	no_argument,	NULL,	'l'},
+		{"get",		no_argument,	NULL,	'g'},
+		{"set",		no_argument,	NULL,	's'},
+		{"rm",		no_argument,	NULL,	'r'},
+		{"help",	no_argument,	NULL,	'h'},
+		{NULL,		0,		NULL,	0}, /* sentry */
 	};
 	const char *path, *key, *value;
 	enum cmd {

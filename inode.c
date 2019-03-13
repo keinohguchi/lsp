@@ -45,7 +45,7 @@ int main(int argc, char *const argv[])
 	const char *const opts = "h";
 	const struct option lopts[] = {
 		{"help",	no_argument,	NULL,	'h'},
-		{}, /* sentry */
+		{NULL,		0,		NULL,	0}, /* sentry */
 	};
 	const char *file;
 	int ret, opt, fd;

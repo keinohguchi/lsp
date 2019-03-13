@@ -38,7 +38,7 @@ int main(void)
 			.argv	= {target, "-h", NULL},
 			.want	= 0,
 		},
-		{},
+		{ .name = NULL }, /* sentry */
 	};
 	int ret;
 

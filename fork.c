@@ -32,7 +32,7 @@ static struct {
 		{"sleep",	required_argument,	NULL,	's'},
 		{"version",	no_argument,		NULL,	'v'},
 		{"help",	no_argument,		NULL,	'h'},
-		{},
+		{NULL,		0,			NULL,	0},
 	},
 };
 

@@ -25,7 +25,7 @@ int main(void)
 			.argv	= {target, NULL},
 			.want	= 0,
 		},
-		{},
+		{ .name = NULL }, /* sentry */
 	};
 	int ret;
 

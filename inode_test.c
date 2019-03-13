@@ -53,7 +53,7 @@ int main(void)
 			.name	= "parent directory",
 			.argv	= {path, "..", NULL},
 		},
-		{}, /* sentry */
+		{ .name = NULL }, /* sentry */
 	};
 
 	for (t = tests; t->name; t++) {

@@ -59,9 +59,9 @@ int main(int argc, char *argv[])
 {
 	const char *opts = "c:h";
 	const struct option lopts[] = {
-		{"count",	required_argument,	NULL, 'c'},
-		{"help",	no_argument,		NULL, 'h'},
-		{}, /* sentry */
+		{"count",	required_argument,	NULL,	'c'},
+		{"help",	no_argument,		NULL,	'h'},
+		{NULL,		0,			NULL,	0}, /* sentry */
 	};
 	struct thread *things;
 	struct thread *thing, *retp;

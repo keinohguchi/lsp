@@ -47,7 +47,7 @@ int main(void)
 			.name	= "set CPU1 affinity",
 			.argv	= { target, "-c", "1", "-l", NULL },
 		},
-		{},	/* sentry */
+		{ .name = NULL }, /* sentry */
 	};
 	const struct test *t;
 

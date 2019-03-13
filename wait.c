@@ -50,7 +50,7 @@ int main(int argc, char *argv[])
 {
 	const struct option lopts[] = {
 		{"help",	no_argument,	NULL,	'h'},
-		{},
+		{NULL,		0,		NULL,	0},
 	};
 	const char *opts = "h";
 	int opt, ret, status;

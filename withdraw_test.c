@@ -57,7 +57,7 @@ int main(void)
 			.argv	= {target, "-d", "1000", "-w", "1", "-c", "1000", NULL},
 			.want	= 0,
 		},
-		{}, /* sentry */
+		{ .name = NULL, }, /* sentry */
 	};
 
 	for (t = tests; t->name; t++) {

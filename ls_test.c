@@ -109,7 +109,7 @@ int main()
 			.argv	= {target, "some_borgus_file", NULL},
 			.want	= 1,
 		},
-		{}, /* sentry */
+		{ .name = NULL }, /* sentry */
 	};
 	int ret;
 

@@ -40,7 +40,7 @@ static struct context {
 			{"",		no_argument,	NULL,		'f'},
 			{"version",	no_argument,	&version_flag,	1},
 			{"help",	no_argument,	&help_flag,	1},
-			{},
+			{NULL,		0,		NULL,		0},
 	},
 };
 

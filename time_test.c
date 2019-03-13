@@ -23,7 +23,7 @@ int main(void)
 			.argv	= {target, "date", NULL},
 			.want	= 0,
 		},
-		{}, /* sentry */
+		{ .name = NULL }, /* sentry */
 	};
 	int ret;
 

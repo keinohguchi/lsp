@@ -47,7 +47,7 @@ int main(int argc, char *argv[])
 		{ "cpu",  no_argument, NULL, 'p'},
 		{ "list", no_argument, NULL, 'l'},
 		{ "help", no_argument, NULL, 'h'},
-		{}, /* sentry */
+		{NULL, 0, NULL, 0}, /* sentry */
 	};
 	long int opt;
 	int resources[RLIMIT_NLIMITS];

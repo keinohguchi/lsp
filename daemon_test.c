@@ -130,7 +130,7 @@ int main(void)
 			.name	= "-p option",
 			.argv	= { target, "-p", pid_str, NULL},
 		},
-		{}, /* sentry */
+		{ .name = NULL }, /* sentry */
 	};
 	const struct test *t;
 	struct sigaction sa = {

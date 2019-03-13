@@ -27,7 +27,7 @@ int main(void)
 			.argv	= {target, "something_bogus_file.txt", NULL},
 			.want	= 1,
 		},
-		{}, /* sentry */
+		{ .name	= NULL }, /* sentry */
 	};
 	int ret;
 

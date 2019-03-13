@@ -64,7 +64,7 @@ int main(void)
 			.argv	= {target, "-m", "normal", "-s", "1", NULL},
 			.want	= 0,
 		},
-		{},
+		{ .name = NULL }, /* sentry */
 	};
 	int ret;
 

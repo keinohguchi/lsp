@@ -63,7 +63,7 @@ int main(void)
 			.cmd	= "ls -l\nexit\n",
 			.want	= 0,
 		},
-		{}, /* sentry */
+		{ .name = NULL }, /* sentry */
 	};
 	int ret = 0;
 

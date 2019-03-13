@@ -36,7 +36,7 @@ int main(int argc, char *const argv[])
 	const struct option lopts[] = {
 		{"help",	no_argument,		NULL,	'h'},
 		{"ppid",	required_argument,	NULL,	'p'},
-		{},
+		{NULL,		0,			NULL,	0},
 	};
 	const char *const opts = "hp:";
 	union sigval prime;
