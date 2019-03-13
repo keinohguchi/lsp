@@ -15,6 +15,8 @@
 #include <sys/ioctl.h>
 #include <sys/sysmacros.h>
 
+#include "ls.h"
+
 /* ls program context */
 static int version_flag = 0;
 static int help_flag = 0;
@@ -50,13 +52,13 @@ struct file {
 	char	name[256];
 };
 
-static void version(FILE *stream)
+static int version(FILE *stream)
 {
 	fprintf(stream, "%s version %s\n", ctx.progname, ctx.version);
-	exit(EXIT_SUCCESS);
+	return EXIT_SUCCESS;
 }
 
-static void usage(FILE *stream, int status)
+static int usage(FILE *stream, int status)
 {
 	const struct option *o;
 	fprintf(stream, "usage: %s [-%s]\n", ctx.progname, ctx.opts);
@@ -98,7 +100,7 @@ static void usage(FILE *stream, int status)
 			break;
 		}
 	}
-	exit(status);
+	return status;
 }
 
 static char *stmode(mode_t mode, char *restrict buf, size_t size)
@@ -134,8 +136,8 @@ static char *stmode(mode_t mode, char *restrict buf, size_t size)
 	return buf;
 }
 
-static size_t print_file_long(const char *const base, const char *const file,
-			      struct stat *restrict st)
+static size_t print_file_long(const struct context *restrict ctx, const char *const base,
+			      const char *const file, struct stat *restrict st)
 {
 	size_t len, total = 0;
 	struct passwd *pwd;
@@ -213,25 +215,28 @@ static size_t print_file_long(const char *const base, const char *const file,
 	return total += len;
 }
 
-static size_t print_file(const char *const base, const char *const file,
+static size_t print_file(const struct context *restrict ctx,
+			 const char *const base, const char *const file,
 			 struct stat *restrict st)
 {
-	if (ctx.list)
-		return print_file_long(base, file, st);
+	if (ctx->list)
+		return print_file_long(ctx, base, file, st);
 	else
-		return printf("%-*s", ctx.colwidth, file);
+		return printf("%-*s", ctx->colwidth, file);
 }
 
-static int ls_file(const char *const file, struct stat *restrict st)
+static int ls_file(const struct context *restrict ctx, const char *const file,
+		   struct stat *restrict st)
 {
-	if (print_file("./", file, st) < 0)
+	if (print_file(ctx, "./", file, st) < 0)
 		return -1;
 	if (printf("\n") < 0)
 		return -1;
 	return 0;
 }
 
-static struct file *scan_dir(const char *const path, size_t *nr)
+static struct file *scan_dir(const struct context *restrict ctx,
+			     const char *const path, size_t *nr)
 {
 	struct file *flist;
 	struct dirent *d;
@@ -251,7 +256,7 @@ static struct file *scan_dir(const char *const path, size_t *nr)
 	}
 	i = 0;
 	while ((d = readdir(dir)) != NULL) {
-		if (d->d_name[0] == '.' && !ctx.all)
+		if (d->d_name[0] == '.' && !ctx->all)
 			continue;
 		if (i >= max) {
 			struct file *flist_new;
@@ -280,25 +285,25 @@ out:
 	return flist;
 }
 
-static int ls_dir(const char *const path)
+static int ls_dir(const struct context *restrict ctx, const char *const path)
 {
 	struct file *flist;
 	int i, row, ret = -1;
 	size_t nr;
 
-	if ((flist = scan_dir(path, &nr)) == NULL)
+	if ((flist = scan_dir(ctx, path, &nr)) == NULL)
 		goto out;
-	if (ctx.cmp)
-		qsort(flist, nr, sizeof(struct file), ctx.cmp);
-	row = nr/ctx.colnum;
-	if (nr%ctx.colnum)
+	if (ctx->cmp)
+		qsort(flist, nr, sizeof(struct file), ctx->cmp);
+	row = nr/ctx->colnum;
+	if (nr%ctx->colnum)
 		row++;
 	for (i = 0; i < row; i++) {
 		int j;
-		for (j = 0; j < ctx.colnum && i+j*row < nr; j++)
-			if (print_file(path, flist[i+j*row].name, NULL) < 0)
+		for (j = 0; j < ctx->colnum && i+j*row < nr; j++)
+			if (print_file(ctx, path, flist[i+j*row].name, NULL) < 0)
 				goto out;
-		if (!ctx.list && printf("\n") < 0)
+		if (!ctx->list && printf("\n") < 0)
 			goto out;
 	}
 	ret = 0;
@@ -308,7 +313,7 @@ out:
 	return ret;
 }
 
-static int ls(const char *const file)
+static int ls(const struct context *restrict ctx, const char *const file)
 {
 	struct stat st;
 	char *path;
@@ -323,9 +328,9 @@ static int ls(const char *const file)
 		goto out;
 	}
 	if (S_ISDIR(st.st_mode))
-		ret = ls_dir(path);
+		ret = ls_dir(ctx, path);
 	else
-		ret = ls_file(file, &st);
+		ret = ls_file(ctx, file, &st);
 out:
 	if (path)
 		free(path);
@@ -344,22 +349,21 @@ static int rfilecmp(const void *file1, const void *file2)
 	return strcmp(a->name, b->name);
 }
 
-int main(int argc, char *const argv[])
+int lsp_ls(int argc, char *const argv[])
 {
 	int i, opt, ret;
 
 	ctx.progname = argv[0];
 	ctx.cmp = filecmp;
+	optind = 0;
 	while ((opt = getopt_long(argc, argv, ctx.opts, ctx.lopts, &i)) != -1) {
 		switch (opt) {
 		case 0:
 			switch (ctx.lopts[i].name[0]) {
 			case 'v':
-				version(stdout);
-				break;
+				return version(stdout);
 			case 'h':
-				usage(stdout, EXIT_SUCCESS);
-				break;
+				return usage(stdout, EXIT_SUCCESS);
 			}
 			break;
 		case 'a':
@@ -376,8 +380,7 @@ int main(int argc, char *const argv[])
 			break;
 		case '?':
 		default:
-			usage(stderr, EXIT_FAILURE);
-			break;
+			return usage(stderr, EXIT_FAILURE);
 		}
 	}
 	/* multiple column support */
@@ -395,19 +398,19 @@ int main(int argc, char *const argv[])
 	/* let's rock */
 	switch (argc - optind) {
 	case 0:
-		ret = ls(".");
+		ret = ls(&ctx, ".");
 		break;
 	case 1:
-		ret = ls(argv[optind]);
+		ret = ls(&ctx, argv[optind]);
 		break;
 	default:
 		while (optind < argc)
-			if ((ret = ls(argv[optind++])) == -1)
+			if ((ret = ls(&ctx, argv[optind++])) == -1)
 				goto out;
 		break;
 	}
 out:
-	if (ret != 0)
+	if (ret)
 		return 1;
-	return 0;
+	return ret;
 }

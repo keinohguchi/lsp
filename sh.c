@@ -10,6 +10,8 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+#include "ls.h"
+
 #ifndef ARG_MAX
 #define ARG_MAX 1024
 #endif /* ARG_MAX */
@@ -119,13 +121,13 @@ static void print_prompt(void)
 	printf("%s$ ", prompt);
 }
 
-static int exit_handler(char *const argv[])
+static int exit_handler(int argc, char *const argv[])
 {
 	exit(EXIT_SUCCESS);
 	return 0;
 }
 
-static int version_handler(char *const argv[])
+static int version_handler(int argc, char *const argv[])
 {
 	printf("version %s\n", version);
 	return 0;
@@ -135,8 +137,13 @@ static int version_handler(char *const argv[])
 static const struct command {
 	const char	*const name;
 	const char	*const alias[2];
-	int		(*handler)(char *const argv[]);
+	int		(*handler)(int argc, char *const argv[]);
 } cmds[] = {
+	{
+		.name		= "ls",
+		.alias		= {NULL},
+		.handler	= lsp_ls,
+	},
 	{
 		.name		= "exit",
 		.alias		= {"quit", NULL},
@@ -167,7 +174,7 @@ static const struct command *parse_command(char *argv0)
 static int process(char *cmdline)
 {
 	char *save, *start = cmdline;
-	char *argv[ARG_MAX];
+	char *argv[ARG_MAX] = {NULL};
 	const struct command *cmd;
 	int i, ret, status;
 	pid_t pid;
@@ -183,7 +190,7 @@ static int process(char *cmdline)
 
 	/* shell command handling */
 	if ((cmd = parse_command(argv[0]))) {
-		ret = (*cmd->handler)(argv);
+		ret = (*cmd->handler)(i, argv);
 		if (!ret)
 			print_prompt();
 		return ret;
