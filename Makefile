@@ -46,12 +46,13 @@ test check: $(TESTS)
 $(TESTS): $(PROGS) $(TEST_SRCS)
 	@$(CC) $(CFLAGS) -o $@ $@.c
 	@printf "$@:\t"
-	@if ./$@>/dev/null 2>&1; then\
-		echo PASS;           \
-	else                         \
-		echo FAIL; exit 1;   \
+	@log=$(shell mktemp .$@-XXXXXXX.log); \
+	if ./$@>$$log 2>&1; then              \
+		echo PASS;                    \
+	else                                  \
+		echo FAIL; cat $$log; exit 1; \
 	fi
 clean:
-	@$(RM) $(PROGS) $(TESTS)
+	@$(RM) $(PROGS) $(TESTS) .*.log
 %: %.c
 	$(CC) $(CFLAGS) -o $@ $<
