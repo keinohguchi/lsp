@@ -20,26 +20,6 @@ int main(void)
 			.want	= 0,
 		},
 		{
-			.name	= "no option",
-			.argv	= {target, NULL},
-			.want	= 1,
-		},
-		{
-			.name	= "IPv4 option",
-			.argv	= {target, "-4", NULL},
-			.want	= 1,
-		},
-		{
-			.name	= "IPv6 option",
-			.argv	= {target, "-6", NULL},
-			.want	= 1,
-		},
-		{
-			.name	= "1024 backlog",
-			.argv	= {target, "-b", "1024", NULL},
-			.want	= 1,
-		},
-		{
 			.name	= "512 listening backlog on port 1024",
 			.argv	= {target, "-b", "512", "-p", "1024", NULL},
 			.want	= 0,
