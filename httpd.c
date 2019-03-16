@@ -4,6 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <limits.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -16,6 +17,7 @@ struct server {
 
 static struct context {
 	const char		*progname;
+	int			concurrent;
 	int			domain;
 	short			port;
 	short			backlog;
@@ -23,15 +25,17 @@ static struct context {
 	const char		*const opts;
 	const struct option	lopts[];
 } context = {
+	.backlog	= 5,
+	.concurrent	= 2,
 	.domain		= AF_INET,
 	.port		= 80,
-	.backlog	= 5,
-	.opts		= "46p:b:h",
+	.opts		= "c:46p:b:h",
 	.lopts		= {
+		{"backlog",	required_argument,	0,	'b'},
+		{"concurrent",	required_argument,	0,	'c'},
 		{"ipv4",	no_argument,		0,	'4'},
 		{"ipv6",	no_argument,		0,	'6'},
 		{"port",	required_argument,	0,	'p'},
-		{"backlog",	required_argument,	0,	'b'},
 		{"help",	no_argument,		0,	'h'},
 		{NULL, 0, NULL, 0}, /* sentry */
 	},
@@ -45,6 +49,14 @@ static void usage(const struct context *restrict ctx, FILE *s, int status)
 	for (o = ctx->lopts; o->name; o++) {
 		fprintf(s, "\t-%c,--%s:", o->val, o->name);
 		switch (o->val) {
+		case 'b':
+			fprintf(s, "\tListening backlog (default: %d)\n",
+				ctx->backlog);
+			break;
+		case 'c':
+			fprintf(s, "\tNumber of concurrent server(s) (default: %d)\n",
+				ctx->concurrent);
+			break;
 		case '4':
 			fprintf(s, "\tListen only on IPv4 (default)\n");
 			break;
@@ -54,10 +66,6 @@ static void usage(const struct context *restrict ctx, FILE *s, int status)
 		case 'p':
 			fprintf(s, "\tListen on the port (default: %d)\n",
 				ctx->port);
-			break;
-		case 'b':
-			fprintf(s, "\tListening backlog (default: %d)\n",
-				ctx->backlog);
 			break;
 		case 'h':
 			fprintf(s, "\tdisplay this message and exit\n");
@@ -70,19 +78,13 @@ static void usage(const struct context *restrict ctx, FILE *s, int status)
 	exit(status);
 }
 
-static int init(struct context *ctx)
+static int init_server(const struct context *restrict ctx, struct server *s)
 {
-	struct server *s = NULL;
 	struct sockaddr_in *sin;
 	struct sockaddr_in6 *sin6;
 	socklen_t slen = 0;
 	int ret, opt, sd = -1;
 
-	s = malloc(sizeof(struct server));
-	if (s == NULL) {
-		perror("malloc");
-		return -1;
-	}
 	switch (ctx->domain) {
 	case AF_INET:
 		slen = sizeof(struct sockaddr_in);
@@ -116,9 +118,9 @@ static int init(struct context *ctx)
 		goto err;
 	}
 	opt = 1;
-	ret = setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+	ret = setsockopt(sd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
 	if (ret == -1) {
-		perror("setsockopt(SO_REUSEADDR)");
+		perror("setsockopt(SO_REUSEPORT)");
 		goto err;
 	}
 	ret = bind(sd, s->sa, slen);
@@ -131,7 +133,6 @@ static int init(struct context *ctx)
 		perror("listen");
 		goto err;
 	}
-	ctx->servers = s;
 	s->ctx = ctx;
 	s->sd = sd;
 	return 0;
@@ -139,23 +140,53 @@ err:
 	if (sd != -1)
 		if (close(sd))
 			perror("close");
-	if (s) {
-		if (s->sa)
-			free(s->sa);
-		free(s);
+	if (s->sa)
+		free(s->sa);
+	return ret;
+}
+
+static void term_server(struct server *s)
+{
+	if (s && s->sd)
+		if (close(s->sd))
+			perror("close");
+}
+
+
+static int init(struct context *ctx)
+{
+	struct server *ss, *s;
+	int i, j, ret;
+
+	ss = calloc(ctx->concurrent, sizeof(struct server));
+	if (ss == NULL) {
+		perror("calloc");
+		return -1;
 	}
+	s = ss;
+	for (i = 0; i < ctx->concurrent; i++) {
+		ret = init_server(ctx, s++);
+		if (ret == -1)
+			goto err;
+	}
+	ctx->servers = ss;
+	return 0;
+err:
+	s = ss;
+	for (j = 0; j < i; j++)
+		term_server(s++);
 	return ret;
 }
 
 static void term(struct context *ctx)
 {
 	struct server *s = ctx->servers;
-
-	if (s && s->sd)
-		if (close(s->sd))
-			perror("close");
-	if (s)
-		free(s);
+	int i;
+	if (s == NULL)
+		return;
+	for (i = 0; i < ctx->concurrent; i++)
+		term_server(s++);
+	free(ctx->servers);
 }
 
 int main(int argc, char *const argv[])
@@ -168,6 +199,18 @@ int main(int argc, char *const argv[])
 	while ((opt = getopt_long(argc, argv, ctx->opts, ctx->lopts, NULL)) != -1) {
 		long val;
 		switch (opt) {
+		case 'b':
+			val = strtol(optarg, NULL, 10);
+			if (val <= 0 || val > UCHAR_MAX)
+				usage(ctx, stderr, EXIT_FAILURE);
+			ctx->backlog = val;
+			break;
+		case 'c':
+			val = strtol(optarg, NULL, 10);
+			if (val <= 0 || val > SHRT_MAX)
+				usage(ctx, stderr, EXIT_FAILURE);
+			ctx->concurrent = val;
+			break;
 		case '4':
 			ctx->domain = AF_INET;
 			break;
@@ -176,15 +219,9 @@ int main(int argc, char *const argv[])
 			break;
 		case 'p':
 			val = strtol(optarg, NULL, 10);
-			if (val <= 0 || val >= 65535)
+			if (val <= 0 || val >= USHRT_MAX)
 				usage(ctx, stderr, EXIT_FAILURE);
 			ctx->port = val;
-			break;
-		case 'b':
-			val = strtol(optarg, NULL, 10);
-			if (val <= 0 || val >= 65535)
-				usage(ctx, stderr, EXIT_FAILURE);
-			ctx->backlog = val;
 			break;
 		case 'h':
 			usage(ctx, stdout, EXIT_SUCCESS);
