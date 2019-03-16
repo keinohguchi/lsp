@@ -152,7 +152,6 @@ static void term_server(struct server *s)
 			perror("close");
 }
 
-
 static int init(struct context *ctx)
 {
 	struct server *ss, *s;
@@ -207,7 +206,7 @@ int main(int argc, char *const argv[])
 			break;
 		case 'c':
 			val = strtol(optarg, NULL, 10);
-			if (val <= 0 || val > SHRT_MAX)
+			if (val <= 0 || val > SCHAR_MAX)
 				usage(ctx, stderr, EXIT_FAILURE);
 			ctx->concurrent = val;
 			break;

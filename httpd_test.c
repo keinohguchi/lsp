@@ -20,13 +20,13 @@ int main(void)
 			.want	= 0,
 		},
 		{
-			.name	= "--backlog 256 option",
-			.argv	= {target, "-b", "256", NULL},
+			.name	= "256 listen backlog on port 1024",
+			.argv	= {target, "-b", "256", "-p", "1024", NULL},
 			.want	= 1,
 		},
 		{
-			.name	= "--concurrent 128 option",
-			.argv	= {target, "-b", "128", NULL},
+			.name	= "128 concurrent listener on port 1024",
+			.argv	= {target, "-c", "128", "-p", "1024", NULL},
 			.want	= 1,
 		},
 		{
