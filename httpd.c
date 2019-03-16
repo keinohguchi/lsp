@@ -5,12 +5,16 @@
 #include <unistd.h>
 #include <getopt.h>
 #include <limits.h>
+#include <errno.h>
+#include <pthread.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 
 struct server {
 	const struct context	*ctx;
+	pthread_t		tid;
+	int			status;
 	int			sd;
 	struct sockaddr		*sa;
 };
@@ -78,8 +82,9 @@ static void usage(const struct context *restrict ctx, FILE *s, int status)
 	exit(status);
 }
 
-static int init_server(const struct context *restrict ctx, struct server *s)
+static int init_server(struct server *s)
 {
+	const struct context *const ctx = s->ctx;
 	struct sockaddr_in *sin;
 	struct sockaddr_in6 *sin6;
 	socklen_t slen = 0;
@@ -133,7 +138,6 @@ static int init_server(const struct context *restrict ctx, struct server *s)
 		perror("listen");
 		goto err;
 	}
-	s->ctx = ctx;
 	s->sd = sd;
 	return 0;
 err:
@@ -147,9 +151,35 @@ err:
 
 static void term_server(struct server *s)
 {
-	if (s && s->sd)
-		if (close(s->sd))
-			perror("close");
+	if (s && s->tid) {
+		int *retp;
+		int ret = pthread_join(s->tid, (void **)&retp);
+		if (ret) {
+			errno = ret;
+			perror("pthread_join");
+			/* ignore the error */
+		}
+		if (*retp != EXIT_SUCCESS)
+			fprintf(stderr, "tid[%ld]: status=%d\n", s->tid, *retp);
+	}
+}
+
+static void *server(void *arg)
+{
+	struct server *s = arg;
+	int ret;
+
+	ret = init_server(s);
+	if (ret == -1) {
+		s->status = EXIT_FAILURE;
+		return &s->status;
+	}
+	s->status = EXIT_SUCCESS;
+	if (close(s->sd)) {
+		perror("close");
+		s->status = EXIT_FAILURE;
+	}
+	return &s->status;
 }
 
 static int init(struct context *ctx)
@@ -162,18 +192,28 @@ static int init(struct context *ctx)
 		perror("calloc");
 		return -1;
 	}
+	memset(ss, 0, ctx->concurrent*sizeof(struct server));
 	s = ss;
 	for (i = 0; i < ctx->concurrent; i++) {
-		ret = init_server(ctx, s++);
+		s->ctx = ctx;
+		ret = pthread_create(&s->tid, NULL, server, s);
 		if (ret == -1)
 			goto err;
+		s++;
 	}
 	ctx->servers = ss;
 	return 0;
 err:
 	s = ss;
-	for (j = 0; j < i; j++)
-		term_server(s++);
+	for (j = 0; j < i; j++) {
+		ret = pthread_cancel(s->tid);
+		if (ret) {
+			errno = ret;
+			perror("pthread_cancel");
+			/* ignore the error */
+		}
+		s++;
+	}
 	return ret;
 }
 
