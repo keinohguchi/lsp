@@ -69,7 +69,7 @@ static void usage(const struct process *restrict p, FILE *s, int status)
 				p->concurrent);
 			break;
 		case 't':
-			fprintf(s, "\tProcess timeout in seconds (default: %d%s)\n",
+			fprintf(s, "\tProcess timeout in milliseconds (default: %d%s)\n",
 				p->timeout, p->timeout > 0 ? "" : ", no timeout");
 			break;
 		case '4':
@@ -126,8 +126,8 @@ static int init_timer(const struct process *restrict p)
 	const struct itimerval tv = {
 		.it_interval.tv_sec	= 0,
 		.it_interval.tv_usec	= 0,
-		.it_value.tv_sec	= p->timeout,
-		.it_value.tv_usec	= 0,
+		.it_value.tv_sec	= p->timeout/1000,
+		.it_value.tv_usec	= (p->timeout%1000)*1000,
 	};
 	int ret;
 
