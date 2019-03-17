@@ -11,6 +11,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/time.h>
+#include <sys/sysinfo.h>
 #include <netinet/in.h>
 
 /* server context */
@@ -344,6 +345,7 @@ int main(int argc, char *const argv[])
 	struct process *p = &proc;
 	int ret, opt;
 
+	p->concurrent = get_nprocs();
 	p->progname = argv[0];
 	optind = 0;
 	while ((opt = getopt_long(argc, argv, p->opts, p->lopts, NULL)) != -1) {
