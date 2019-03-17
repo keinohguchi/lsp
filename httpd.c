@@ -6,8 +6,9 @@
 #include <unistd.h>
 #include <getopt.h>
 #include <limits.h>
-#include <errno.h>
 #include <pthread.h>
+#include <sched.h>
+#include <errno.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -20,9 +21,9 @@ struct server {
 	pthread_t		tid;
 	int			status;
 	int			sd;
+	socklen_t		slen;
 	struct sockaddr		*ss;
 	struct sockaddr		*cs;
-	socklen_t		slen;
 };
 
 /* process wide variables */
@@ -272,19 +273,32 @@ static void *server(void *arg)
 
 static int init(struct process *p)
 {
-	struct server *ss, *s;
+	struct server *s, *ss = NULL;
+	size_t size, nr = get_nprocs();
+	cpu_set_t *cpus;
 	int i, j, ret;
 
+	cpus = CPU_ALLOC(nr);
+	if (cpus == NULL) {
+		perror("CPU_ALLOC");
+		return -1;
+	}
+	size = CPU_ALLOC_SIZE(nr);
 	ss = calloc(p->concurrent, sizeof(struct server));
 	if (ss == NULL) {
 		perror("calloc");
-		return -1;
+		goto err;
 	}
 	memset(ss, 0, p->concurrent*sizeof(struct server));
 	s = ss;
 	for (i = 0; i < p->concurrent; i++) {
 		s->p = p;
 		ret = pthread_create(&s->tid, NULL, server, s);
+		if (ret == -1)
+			goto err;
+		CPU_ZERO_S(size, cpus);
+		CPU_SET_S(i%nr, size, cpus);
+		ret = pthread_setaffinity_np(s->tid, size, cpus);
 		if (ret == -1)
 			goto err;
 		s++;
@@ -296,19 +310,24 @@ static int init(struct process *p)
 	ret = init_timer(p);
 	if (ret == -1)
 		goto err;
+	CPU_FREE(cpus);
 	return 0;
 err:
-	s = ss;
-	for (j = 0; j < i; j++) {
-		ret = pthread_cancel(s->tid);
-		if (ret) {
-			errno = ret;
-			perror("pthread_cancel");
-			/* ignore the error */
+	if (ss != NULL) {
+		s = ss;
+		for (j = 0; j < i; j++) {
+			ret = pthread_cancel(s->tid);
+			if (ret) {
+				errno = ret;
+				perror("pthread_cancel");
+				/* ignore the error */
+			}
+			s++;
 		}
-		s++;
+		free(ss);
 	}
-	free(ss);
+	if (cpus != NULL)
+		CPU_FREE(cpus);
 	return ret;
 }
 
