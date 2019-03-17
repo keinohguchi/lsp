@@ -166,8 +166,9 @@ static int init_server(struct server *ctx)
 	struct sockaddr_in *sin;
 	struct sockaddr_in6 *sin6;
 	socklen_t slen = 0;
-	int ret, opt, sd = -1;
+	int ret, opt, sd;
 
+	ctx->sd = -1;
 	switch (p->domain) {
 	case AF_INET:
 		slen = sizeof(struct sockaddr_in);
@@ -207,6 +208,7 @@ static int init_server(struct server *ctx)
 		ret = -1;
 		goto err;
 	}
+	ctx->sd = sd;
 	opt = 1;
 	ret = setsockopt(sd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
 	if (ret == -1) {
@@ -223,7 +225,6 @@ static int init_server(struct server *ctx)
 		perror("listen");
 		goto err;
 	}
-	ctx->sd = sd;
 	return 0;
 err:
 	term_server(ctx);
