@@ -19,7 +19,9 @@ struct server {
 	pthread_t		tid;
 	int			status;
 	int			sd;
-	struct sockaddr		*sa;
+	struct sockaddr		*ss;
+	struct sockaddr		*cs;
+	socklen_t		slen;
 };
 
 /* process wide variables */
@@ -168,28 +170,35 @@ static int init_server(struct server *ctx)
 	switch (p->domain) {
 	case AF_INET:
 		slen = sizeof(struct sockaddr_in);
-		sin = malloc(slen);
+		sin = calloc(2, slen);
 		if (sin == NULL) {
-			perror("malloc");
+			perror("calloc");
 			goto err;
 		}
-		sin->sin_family = AF_INET;
-		sin->sin_addr.s_addr = 0;
-		sin->sin_port = htons(p->port);
-		ctx->sa = (struct sockaddr *)sin;
+		sin[0].sin_family = sin[1].sin_family = AF_INET;
+		sin[0].sin_addr.s_addr = sin[1].sin_addr.s_addr = 0;
+		sin[0].sin_port = htons(p->port);
+		ctx->ss = (struct sockaddr *)&sin[0];
+		ctx->cs = (struct sockaddr *)&sin[1];
+		ctx->slen = slen;
 		break;
 	case AF_INET6:
 		slen = sizeof(struct sockaddr_in6);
-		sin6 = malloc(slen);
+		sin6 = calloc(2, slen);
 		if (sin6 == NULL) {
-			perror("malloc");
+			perror("calloc");
 			goto err;
 		}
-		sin6->sin6_family = AF_INET6;
-		memset(&sin6->sin6_addr, 0, sizeof(sin6->sin6_addr));
-		sin6->sin6_port = htons(p->port);
-		ctx->sa = (struct sockaddr *)sin6;
+		sin6[0].sin6_family = sin6[1].sin6_family = AF_INET6;
+		memset(&sin6[0].sin6_addr, 0, sizeof(sin6->sin6_addr));
+		memset(&sin6[1].sin6_addr, 0, sizeof(sin6->sin6_addr));
+		sin6[0].sin6_port = sin6[1].sin6_port = htons(p->port);
+		ctx->ss = (struct sockaddr *)&sin6[0];
+		ctx->cs = (struct sockaddr *)&sin6[1];
+		ctx->slen = slen;
 		break;
+	default:
+		return -1;
 	}
 	sd = socket(p->domain, SOCK_STREAM, 0);
 	if (sd == -1) {
@@ -203,7 +212,7 @@ static int init_server(struct server *ctx)
 		perror("setsockopt(SO_REUSEPORT)");
 		goto err;
 	}
-	ret = bind(sd, ctx->sa, slen);
+	ret = bind(sd, ctx->ss, slen);
 	if (ret == -1) {
 		perror("bind");
 		goto err;
@@ -219,29 +228,37 @@ err:
 	if (sd != -1)
 		if (close(sd))
 			perror("close");
-	if (ctx->sa)
-		free(ctx->sa);
+	if (ctx->ss)
+		free(ctx->ss);
 	return ret;
 }
 
 static void term_server(struct server *ctx)
 {
-	if (ctx && ctx->tid) {
-		int *retp;
-		int ret = pthread_join(ctx->tid, (void **)&retp);
-		if (ret) {
-			errno = ret;
-			perror("pthread_join");
-			/* ignore the error */
-		}
-		if (*retp != EXIT_SUCCESS)
-			fprintf(stderr, "tid[%ld]: status=%d\n", ctx->tid, *retp);
+	int ret, *retp;
+
+	if (ctx == NULL || ctx->tid == 0)
+		return;
+
+	ret = pthread_join(ctx->tid, (void **)&retp);
+	if (ret) {
+		errno = ret;
+		perror("pthread_join");
+		/* ignore the error */
 	}
+	if (*retp != EXIT_SUCCESS)
+		fprintf(stderr, "tid[%ld]: status=%d\n", ctx->tid, *retp);
+	if (ctx->sd != -1)
+		if (close(ctx->sd))
+			perror("close");
+	if (ctx->ss)
+		free(ctx->ss);
 }
 
 static void *server(void *arg)
 {
 	struct server *ctx = arg;
+	socklen_t slen;
 	int ret;
 
 	ret = init_server(ctx);
@@ -249,9 +266,16 @@ static void *server(void *arg)
 		ctx->status = EXIT_FAILURE;
 		return &ctx->status;
 	}
-	while (1)
-		sleep(1);
-	ctx->status = EXIT_SUCCESS;
+	ctx->status = EXIT_FAILURE;
+	ret = accept(ctx->sd, ctx->cs, &slen);
+	if (ret == -1)
+		perror("accept");
+	else {
+		if (close(ret))
+			perror("close");
+		else
+			ctx->status = EXIT_SUCCESS;
+	}
 	if (close(ctx->sd)) {
 		perror("close");
 		ctx->status = EXIT_FAILURE;
