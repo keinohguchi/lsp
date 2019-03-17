@@ -11,7 +11,7 @@ int main(void)
 	char *const target = realpath("./httpd", NULL);
 	const struct test {
 		char	*name;
-		char	*const argv[9];
+		char	*const argv[11];
 		int	want;
 	} *t, tests[] = {
 		{
@@ -31,92 +31,92 @@ int main(void)
 		},
 		{
 			.name	= "255 listening backlog on port 1024",
-			.argv	= {target, "-c", "1", "-b", "255", "-p", "1024", NULL},
+			.argv	= {target, "-c", "1", "-b", "255", "-p", "1024", "-t", "1", NULL},
 			.want	= 0,
 		},
 		{
 			.name	= "IPv6 255 listening backlog on port 1024",
-			.argv	= {target, "-c", "1", "-6", "-b", "255", "-p", "1024", NULL},
+			.argv	= {target, "-c", "1", "-6", "-b", "255", "-p", "1024", "-t", "1", NULL},
 			.want	= 0,
 		},
 		{
 			.name	= "IPv4 on port 1024",
-			.argv	= {target, "-c", "1", "-4", "-p", "1024", NULL},
+			.argv	= {target, "-c", "1", "-4", "-p", "1024", "-t", "1", NULL},
 			.want	= 0,
 		},
 		{
 			.name	= "IPv6 on port 1024",
-			.argv	= {target, "-c", "1", "-6", "-p", "1024", NULL},
+			.argv	= {target, "-c", "1", "-6", "-p", "1024", "-t", "1", NULL},
 			.want	= 0,
 		},
 		{
 			.name	= "IPv4 on port 65534",
-			.argv	= {target, "-c", "1", "-4", "-p", "65534", NULL},
+			.argv	= {target, "-c", "1", "-4", "-p", "65534", "-t", "1", NULL},
 			.want	= 0,
 		},
 		{
 			.name	= "IPv6 on port 65534",
-			.argv	= {target, "-c", "1", "-6", "-p", "65534", NULL},
+			.argv	= {target, "-c", "1", "-6", "-p", "65534", "-t", "1", NULL},
 			.want	= 0,
 		},
 		{
 			.name	= "two servers 255 listening backlog on port 1024",
-			.argv	= {target, "-c", "2", "-b", "255", "-p", "1024", NULL},
+			.argv	= {target, "-c", "2", "-b", "255", "-p", "1024", "-t", "1", NULL},
 			.want	= 0,
 		},
 		{
 			.name	= "two IPv6 servers 255 listening backlog on port 1024",
-			.argv	= {target, "-c", "2", "-6", "-b", "255", "-p", "1024", NULL},
+			.argv	= {target, "-c", "2", "-6", "-b", "255", "-p", "1024", "-t", "1", NULL},
 			.want	= 0,
 		},
 		{
 			.name	= "two IPv4 servers on port 1024",
-			.argv	= {target, "-c", "2", "-4", "-p", "1024", NULL},
+			.argv	= {target, "-c", "2", "-4", "-p", "1024", "-t", "1", NULL},
 			.want	= 0,
 		},
 		{
 			.name	= "two IPv6 servers on port 1024",
-			.argv	= {target, "-c", "2", "-6", "-p", "1024", NULL},
+			.argv	= {target, "-c", "2", "-6", "-p", "1024", "-t", "1", NULL},
 			.want	= 0,
 		},
 		{
 			.name	= "two IPv4 servers on port 65534",
-			.argv	= {target, "-c", "2", "-4", "-p", "65534", NULL},
+			.argv	= {target, "-c", "2", "-4", "-p", "65534", "-t", "1", NULL},
 			.want	= 0,
 		},
 		{
 			.name	= "two IPv6 servers on port 65534",
-			.argv	= {target, "-c", "2", "-6", "-p", "65534", NULL},
+			.argv	= {target, "-c", "2", "-6", "-p", "65534", "-t", "1", NULL},
 			.want	= 0,
 		},
 		{
 			.name	= "four servers 255 listening backlog on port 1024",
-			.argv	= {target, "-c", "4", "-b", "255", "-p", "1024", NULL},
+			.argv	= {target, "-c", "4", "-b", "255", "-p", "1024", "-t", "1", NULL},
 			.want	= 0,
 		},
 		{
 			.name	= "four IPv6 servers 255 listening backlog on port 1024",
-			.argv	= {target, "-c", "4", "-6", "-b", "255", "-p", "1024", NULL},
+			.argv	= {target, "-c", "4", "-6", "-b", "255", "-p", "1024", "-t", "1", NULL},
 			.want	= 0,
 		},
 		{
 			.name	= "four IPv4 servers on port 1024",
-			.argv	= {target, "-c", "4", "-4", "-p", "1024", NULL},
+			.argv	= {target, "-c", "4", "-4", "-p", "1024", "-t", "1", NULL},
 			.want	= 0,
 		},
 		{
 			.name	= "four IPv6 servers on port 1024",
-			.argv	= {target, "-c", "4", "-6", "-p", "1024", NULL},
+			.argv	= {target, "-c", "4", "-6", "-p", "1024", "-t", "1", NULL},
 			.want	= 0,
 		},
 		{
 			.name	= "four IPv4 servers on port 65534",
-			.argv	= {target, "-c", "4", "-4", "-p", "65534", NULL},
+			.argv	= {target, "-c", "4", "-4", "-p", "65534", "-t", "1", NULL},
 			.want	= 0,
 		},
 		{
 			.name	= "four IPv6 servers on port 65534",
-			.argv	= {target, "-c", "4", "-6", "-p", "65534", NULL},
+			.argv	= {target, "-c", "4", "-6", "-p", "65534", "-t", "1", NULL},
 			.want	= 0,
 		},
 		{ .name = NULL },

@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 #include <unistd.h>
 #include <getopt.h>
 #include <limits.h>
@@ -24,6 +25,7 @@ struct server {
 static struct process {
 	const char		*progname;
 	int			concurrent;
+	int			timeout;
 	int			domain;
 	short			port;
 	short			backlog;
@@ -33,12 +35,14 @@ static struct process {
 } proc = {
 	.backlog	= 5,
 	.concurrent	= 2,
+	.timeout	= 0,
 	.domain		= AF_INET,
 	.port		= 80,
-	.opts		= "c:46p:b:h",
+	.opts		= "b:c:t:46p:h",
 	.lopts		= {
 		{"backlog",	required_argument,	0,	'b'},
 		{"concurrent",	required_argument,	0,	'c'},
+		{"timeout",	required_argument,	0,	't'},
 		{"ipv4",	no_argument,		0,	'4'},
 		{"ipv6",	no_argument,		0,	'6'},
 		{"port",	required_argument,	0,	'p'},
@@ -63,6 +67,10 @@ static void usage(const struct process *restrict p, FILE *s, int status)
 			fprintf(s, "\tNumber of concurrent server(s) (default: %d)\n",
 				p->concurrent);
 			break;
+		case 't':
+			fprintf(s, "\tProcess timeout in seconds (default: %d%s)\n",
+				p->timeout, p->timeout > 0 ? "" : ", no timeout");
+			break;
 		case '4':
 			fprintf(s, "\tListen only on IPv4 (default)\n");
 			break;
@@ -82,6 +90,48 @@ static void usage(const struct process *restrict p, FILE *s, int status)
 		}
 	}
 	exit(status);
+}
+
+static void timeout_action(int signo, siginfo_t *sa, void *context)
+{
+	if (signo != SIGALRM)
+		return;
+	exit(EXIT_SUCCESS);
+}
+
+static int init_signal(const struct process *restrict p)
+{
+	struct sigaction sa = {
+		.sa_flags	= SA_SIGINFO,
+		.sa_sigaction	= timeout_action,
+	};
+	int ret;
+
+	ret = sigemptyset(&sa.sa_mask);
+	if (ret == -1) {
+		perror("sigemptyset");
+		return -1;
+	}
+	ret = sigaction(SIGALRM, &sa, NULL);
+	if (ret == -1) {
+		perror("sigaction");
+		return -1;
+	}
+	return 0;
+}
+
+static int init_timer(const struct process *restrict p)
+{
+	unsigned remain = p->timeout;
+
+	/* reset timer first */
+	alarm(0);
+	/* no timeout */
+	if (p->timeout <= 0)
+		return 0;
+	while (remain)
+		remain = alarm(remain);
+	return 0;
 }
 
 static int init_server(struct server *ctx)
@@ -189,6 +239,14 @@ static int init(struct process *p)
 	struct server *ss, *s;
 	int i, j, ret;
 
+	ret = init_signal(p);
+	if (ret == -1)
+		return -1;
+
+	ret = init_timer(p);
+	if (ret == -1)
+		return -1;
+
 	ss = calloc(p->concurrent, sizeof(struct server));
 	if (ss == NULL) {
 		perror("calloc");
@@ -253,6 +311,12 @@ int main(int argc, char *const argv[])
 				usage(p, stderr, EXIT_FAILURE);
 			p->concurrent = val;
 			break;
+		case 't':
+			val = strtol(optarg, NULL, 10);
+			if (val < -1 || val > UINT_MAX)
+				usage(p, stderr, EXIT_FAILURE);
+			p->timeout = val;
+			break;
 		case '4':
 			p->domain = AF_INET;
 			break;
@@ -277,6 +341,9 @@ int main(int argc, char *const argv[])
 	ret = init(p);
 	if (ret == -1)
 		return 1;
+	while (1)
+		if (pause())
+			break;
 	term(p);
 	return 0;
 }
