@@ -95,9 +95,27 @@ static void usage(const struct process *restrict p, FILE *s, int status)
 
 static void timeout_action(int signo, siginfo_t *sa, void *context)
 {
+	const struct process *restrict p = &proc;
+	const struct server *s;
+	int i, status = EXIT_SUCCESS;
+
 	if (signo != SIGALRM)
 		return;
-	exit(EXIT_SUCCESS);
+	s = p->servers;
+	for (i = 0; i < p->concurrent; i++) {
+		int ret = pthread_kill(s->tid, 0);
+		if (ret)
+			/* thread is not there */
+			continue;
+		ret = pthread_cancel(s->tid);
+		if (ret) {
+			errno = ret;
+			perror("pthread_cancel");
+			status = EXIT_FAILURE;
+		}
+		s++;
+	}
+	exit(status);
 }
 
 static int init_signal(const struct process *restrict p)
@@ -231,6 +249,8 @@ static void *server(void *arg)
 		ctx->status = EXIT_FAILURE;
 		return &ctx->status;
 	}
+	while (1)
+		sleep(1);
 	ctx->status = EXIT_SUCCESS;
 	if (close(ctx->sd)) {
 		perror("close");
@@ -247,11 +267,6 @@ static int init(struct process *p)
 	ret = init_signal(p);
 	if (ret == -1)
 		return -1;
-
-	ret = init_timer(p);
-	if (ret == -1)
-		return -1;
-
 	ss = calloc(p->concurrent, sizeof(struct server));
 	if (ss == NULL) {
 		perror("calloc");
@@ -267,6 +282,9 @@ static int init(struct process *p)
 		s++;
 	}
 	p->servers = ss;
+	ret = init_timer(p);
+	if (ret == -1)
+		goto err;
 	return 0;
 err:
 	s = ss;
