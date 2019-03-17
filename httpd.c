@@ -27,28 +27,28 @@ struct server {
 /* process wide variables */
 static struct process {
 	const char		*progname;
-	int			concurrent;
-	int			timeout;
+	short			backlog;
+	short			concurrent;
 	int			domain;
 	short			port;
-	short			backlog;
+	int			timeout;
 	struct server		*servers;
 	const char		*const opts;
 	const struct option	lopts[];
 } proc = {
 	.backlog	= 5,
 	.concurrent	= 2,
-	.timeout	= 0,
 	.domain		= AF_INET,
 	.port		= 80,
-	.opts		= "b:c:t:46p:h",
+	.timeout	= 0,
+	.opts		= "46b:c:p:t:h",
 	.lopts		= {
-		{"backlog",	required_argument,	0,	'b'},
-		{"concurrent",	required_argument,	0,	'c'},
-		{"timeout",	required_argument,	0,	't'},
 		{"ipv4",	no_argument,		0,	'4'},
 		{"ipv6",	no_argument,		0,	'6'},
+		{"backlog",	required_argument,	0,	'b'},
+		{"concurrent",	required_argument,	0,	'c'},
 		{"port",	required_argument,	0,	'p'},
+		{"timeout",	required_argument,	0,	't'},
 		{"help",	no_argument,		0,	'h'},
 		{NULL, 0, NULL, 0}, /* sentry */
 	},
@@ -62,33 +62,33 @@ static void usage(const struct process *restrict p, FILE *s, int status)
 	for (o = p->lopts; o->name; o++) {
 		fprintf(s, "\t-%c,--%s:", o->val, o->name);
 		switch (o->val) {
+		case '4':
+			fprintf(s, "\t\tListen only on IPv4 (default)\n");
+			break;
+		case '6':
+			fprintf(s, "\t\tListen only on IPv6\n");
+			break;
 		case 'b':
-			fprintf(s, "\tListening backlog (default: %d)\n",
+			fprintf(s, "\t\tListening backlog (default: %d)\n",
 				p->backlog);
 			break;
 		case 'c':
 			fprintf(s, "\tNumber of concurrent server(s) (default: %d)\n",
 				p->concurrent);
 			break;
-		case 't':
-			fprintf(s, "\tProcess timeout in milliseconds (default: %d%s)\n",
-				p->timeout, p->timeout > 0 ? "" : ", no timeout");
-			break;
-		case '4':
-			fprintf(s, "\tListen only on IPv4 (default)\n");
-			break;
-		case '6':
-			fprintf(s, "\tListen only on IPv6\n");
-			break;
 		case 'p':
-			fprintf(s, "\tListen on the port (default: %d)\n",
+			fprintf(s, "\t\tListen on the port (default: %d)\n",
 				p->port);
 			break;
+		case 't':
+			fprintf(s, "\t\tProcess timeout in milliseconds (default: %d%s)\n",
+				p->timeout, p->timeout > 0 ? "" : ", infinite");
+			break;
 		case 'h':
-			fprintf(s, "\tdisplay this message and exit\n");
+			fprintf(s, "\t\tdisplay this message and exit\n");
 			break;
 		default:
-			fprintf(s, "\t%s option\n", o->name);
+			fprintf(s, "\t\t%s option\n", o->name);
 			break;
 		}
 	}
@@ -98,16 +98,15 @@ static void usage(const struct process *restrict p, FILE *s, int status)
 static void timeout_action(int signo, siginfo_t *sa, void *context)
 {
 	const struct process *restrict p = &proc;
-	const struct server *s;
-	int i, status = EXIT_SUCCESS;
+	const struct server *s = p->servers;
+	int i, ret, status = EXIT_SUCCESS;
 
 	if (signo != SIGALRM)
 		return;
-	s = p->servers;
+	if (s == NULL)
+		exit(status);
 	for (i = 0; i < p->concurrent; i++) {
-		int ret = pthread_kill(s->tid, 0);
-		if (ret)
-			/* thread is not there */
+		if (s->tid == 0)
 			continue;
 		ret = pthread_cancel(s->tid);
 		if (ret) {
@@ -158,6 +157,8 @@ static int init_timer(const struct process *restrict p)
 	}
 	return 0;
 }
+
+static int term_server(struct server *ctx);
 
 static int init_server(struct server *ctx)
 {
@@ -225,34 +226,21 @@ static int init_server(struct server *ctx)
 	ctx->sd = sd;
 	return 0;
 err:
-	if (sd != -1)
-		if (close(sd))
-			perror("close");
-	if (ctx->ss)
-		free(ctx->ss);
+	term_server(ctx);
 	return ret;
 }
 
-static void term_server(struct server *ctx)
+static int term_server(struct server *ctx)
 {
-	int ret, *retp;
-
-	if (ctx == NULL || ctx->tid == 0)
-		return;
-
-	ret = pthread_join(ctx->tid, (void **)&retp);
-	if (ret) {
-		errno = ret;
-		perror("pthread_join");
-		/* ignore the error */
-	}
-	if (*retp != EXIT_SUCCESS)
-		fprintf(stderr, "tid[%ld]: status=%d\n", ctx->tid, *retp);
+	int ret = 0;
 	if (ctx->sd != -1)
-		if (close(ctx->sd))
+		if (close(ctx->sd)) {
 			perror("close");
+			ret = -1;
+		}
 	if (ctx->ss)
 		free(ctx->ss);
+	return ret;
 }
 
 static void *server(void *arg)
@@ -261,12 +249,10 @@ static void *server(void *arg)
 	socklen_t slen;
 	int ret;
 
-	ret = init_server(ctx);
-	if (ret == -1) {
-		ctx->status = EXIT_FAILURE;
-		return &ctx->status;
-	}
 	ctx->status = EXIT_FAILURE;
+	ret = init_server(ctx);
+	if (ret == -1)
+		return &ctx->status;
 	ret = accept(ctx->sd, ctx->cs, &slen);
 	if (ret == -1)
 		perror("accept");
@@ -276,10 +262,9 @@ static void *server(void *arg)
 		else
 			ctx->status = EXIT_SUCCESS;
 	}
-	if (close(ctx->sd)) {
-		perror("close");
+	ret = term_server(ctx);
+	if (ret == -1)
 		ctx->status = EXIT_FAILURE;
-	}
 	return &ctx->status;
 }
 
@@ -288,9 +273,6 @@ static int init(struct process *p)
 	struct server *ss, *s;
 	int i, j, ret;
 
-	ret = init_signal(p);
-	if (ret == -1)
-		return -1;
 	ss = calloc(p->concurrent, sizeof(struct server));
 	if (ss == NULL) {
 		perror("calloc");
@@ -306,6 +288,9 @@ static int init(struct process *p)
 		s++;
 	}
 	p->servers = ss;
+	ret = init_signal(p);
+	if (ret == -1)
+		goto err;
 	ret = init_timer(p);
 	if (ret == -1)
 		goto err;
@@ -321,18 +306,35 @@ err:
 		}
 		s++;
 	}
+	free(ss);
 	return ret;
 }
 
 static void term(const struct process *restrict p)
 {
 	struct server *s = p->servers;
-	int i;
+	int i, ret, *retp;
 
 	if (s == NULL)
 		return;
-	for (i = 0; i < p->concurrent; i++)
-		term_server(s++);
+	for (i = 0; i < p->concurrent; i++) {
+		if (s->tid == 0)
+			continue;
+		ret = pthread_kill(s->tid, 0);
+		if (ret) {
+			perror("pthread_kill");
+			continue;
+		}
+		ret = pthread_join(s->tid, (void **)&retp);
+		if (ret) {
+			errno = ret;
+			perror("pthread_join");
+			/* ignore error */
+		}
+		if (*retp != EXIT_SUCCESS)
+			fprintf(stderr, "tid=%ld,status=%d\n", s->tid, *retp);
+		s++;
+	}
 	free(p->servers);
 }
 
