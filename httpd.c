@@ -10,6 +10,7 @@
 #include <pthread.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <netinet/in.h>
 
 /* server context */
@@ -122,15 +123,19 @@ static int init_signal(const struct process *restrict p)
 
 static int init_timer(const struct process *restrict p)
 {
-	unsigned remain = p->timeout;
+	const struct itimerval tv = {
+		.it_interval.tv_sec	= 0,
+		.it_interval.tv_usec	= 0,
+		.it_value.tv_sec	= p->timeout,
+		.it_value.tv_usec	= 0,
+	};
+	int ret;
 
-	/* reset timer first */
-	alarm(0);
-	/* no timeout */
-	if (p->timeout <= 0)
-		return 0;
-	while (remain)
-		remain = alarm(remain);
+	ret = setitimer(ITIMER_REAL, &tv, NULL);
+	if (ret == -1) {
+		perror("setitimer");
+		return -1;
+	}
 	return 0;
 }
 
