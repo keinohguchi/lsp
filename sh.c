@@ -16,32 +16,63 @@
 #define ARG_MAX 1024
 #endif /* ARG_MAX */
 
-static unsigned timeout = 30;
-static const char *prompt = "sh";
-static const char *progname;
-static const char *delim = " \t\n";
-static const char *const version = "1.0.0";
-static const char *const opts = "t:p:h";
-static const struct option lopts[] = {
-	{"timeout",	required_argument,	NULL,	't'},
-	{"prompt",	required_argument,	NULL,	'p'},
-	{"help",	no_argument,		NULL,	'h'},
-	{NULL,		0,			NULL,	0},
+typedef enum ipc_type {
+	IPC_NONE = 0,
+	IPC_PIPE,
+	IPC_MSGQ,
+} ipc_t;
+
+struct process;
+
+struct client {
+	int			(*handle)(const struct process *restrict p,
+					  char *cmdline);
 };
 
-static void usage(FILE *stream, int status)
+static struct process {
+	unsigned		timeout;
+	const char		*prompt;
+	ipc_t			ipc;
+	struct client		c;
+	const char		*progname;
+	const char		*delim;
+	const char		*const version;
+	const char		*const opts;
+	const struct option	lopts[];
+} process = {
+	.timeout	= 30,
+	.prompt		= "sh",
+	.ipc		= IPC_NONE,
+	.delim		= " \t\n",
+	.version	= "1.0.1",
+	.opts		= "t:p:i:h",
+	.lopts		= {
+		{"timeout",	required_argument,	NULL,	't'},
+		{"prompt",	required_argument,	NULL,	'p'},
+		{"ipc",		required_argument,	NULL,	'i'},
+		{"help",	no_argument,		NULL,	'h'},
+		{NULL, 0, NULL, 0},
+	},
+};
+
+static void usage(const struct process *restrict p, FILE *stream, int status)
 {
 	const struct option *o;
-	fprintf(stream, "usage: %s [-%s]\n", progname, opts);
+	fprintf(stream, "usage: %s [-%s]\n", p->progname, p->opts);
 	fprintf(stream, "options:\n");
-	for (o = lopts; o->name; o++) {
+	for (o = p->lopts; o->name; o++) {
 		fprintf(stream, "\t-%c,--%s:", o->val, o->name);
 		switch (o->val) {
 		case 't':
-			fprintf(stream,"\tspecify timeout in second (default %ds)\n", timeout);
+			fprintf(stream,"\tspecify timeout in second (default %d)\n",
+				p->timeout);
 			break;
 		case 'p':
-			fprintf(stream, "\tspecify the prompt (default '%s$ ')\n", prompt);
+			fprintf(stream, "\tspecify the prompt (default '%s$ ')\n",
+				p->prompt);
+			break;
+		case 'i':
+			fprintf(stream, "\tIPC type [none|pipe|msgq] (default: none)\n");
 			break;
 		case 'h':
 			fprintf(stream, "\tdisplay this message and exit\n");
@@ -72,9 +103,10 @@ static int init_timeout(unsigned timeout)
 
 static void io_handler(int signo)
 {
+	const struct process *const p = &process;
 	if (signo != SIGIO)
 		return;
-	while (alarm(timeout))
+	while (alarm(p->timeout))
 		alarm(0);
 }
 
@@ -103,22 +135,9 @@ static int init_io(int fd)
 	return 0;
 }
 
-static int init(unsigned timeout, int fd)
+static void print_prompt(const struct process *const p)
 {
-	int ret;
-
-	ret = init_timeout(timeout);
-	if (ret == -1)
-		return ret;
-	ret = init_io(fd);
-	if (ret == -1)
-		return ret;
-	return 0;
-}
-
-static void print_prompt(void)
-{
-	printf("%s$ ", prompt);
+	printf("%s$ ", p->prompt);
 }
 
 static int exit_handler(int argc, char *const argv[])
@@ -129,7 +148,8 @@ static int exit_handler(int argc, char *const argv[])
 
 static int version_handler(int argc, char *const argv[])
 {
-	printf("version %s\n", version);
+	const struct process *const p = &process;
+	printf("version %s\n", p->version);
 	return 0;
 }
 
@@ -171,7 +191,7 @@ static const struct command *parse_command(char *argv0)
 	return NULL;
 }
 
-static int process(char *cmdline)
+static int handle(const struct process *restrict p, char *cmdline)
 {
 	char *save, *start = cmdline;
 	char *argv[ARG_MAX] = {NULL};
@@ -180,7 +200,7 @@ static int process(char *cmdline)
 	pid_t pid;
 
 	for (i = 0; i < ARG_MAX; i++) {
-		argv[i] = strtok_r(start, delim, &save);
+		argv[i] = strtok_r(start, p->delim, &save);
 		if (!argv[i])
 			break;
 		start = NULL;
@@ -188,11 +208,11 @@ static int process(char *cmdline)
 	if (!argv[0])
 		return 0;
 
-	/* shell command handling */
+	/* internal command handling */
 	if ((cmd = parse_command(argv[0]))) {
 		ret = (*cmd->handler)(i, argv);
 		if (!ret)
-			print_prompt();
+			print_prompt(p);
 		return ret;
 	}
 
@@ -221,45 +241,86 @@ static int process(char *cmdline)
 	}
 	if (WIFEXITED(status) && WEXITSTATUS(status))
 		return WEXITSTATUS(status);
-	print_prompt();
+	print_prompt(p);
+	return 0;
+}
+
+static int init_client(struct process *const p)
+{
+	switch (p->ipc) {
+	case IPC_NONE:
+		p->c.handle = handle;
+		return 0;
+	default:
+		fprintf(stderr, "unknown ipc type: %d\n", p->ipc);
+		break;
+	}
+	return -1;
+}
+
+static int init(struct process *const p, int fd)
+{
+	int ret;
+
+	ret = init_timeout(p->timeout);
+	if (ret == -1)
+		return ret;
+	ret = init_io(fd);
+	if (ret == -1)
+		return ret;
+	ret = init_client(p);
+	if (ret == -1)
+		return ret;
 	return 0;
 }
 
 int main(int argc, char *const argv[])
 {
+	struct process *const p = &process;
 	char *cmd, line[LINE_MAX];
 	int opt, ret;
 
-	progname = argv[0];
-	while ((opt = getopt_long(argc, argv, opts, lopts, NULL)) != -1) {
+	p->progname = argv[0];
+	while ((opt = getopt_long(argc, argv, p->opts, p->lopts, NULL)) != -1) {
 		long val;
 		switch (opt) {
 		case 't':
 			val = strtol(optarg, NULL, 10);
 			if (val < 0 || val == LONG_MAX)
-				usage(stderr, EXIT_FAILURE);
-			timeout = (unsigned)val;
+				usage(p, stderr, EXIT_FAILURE);
+			p->timeout = (unsigned)val;
 			break;
 		case 'p':
-			prompt = optarg;
+			p->prompt = optarg;
+			break;
+		case 'i':
+			if (!strncmp(optarg, "none", strlen(optarg)))
+				p->ipc = IPC_NONE;
+			else if (!strncmp(optarg, "pipe", strlen(optarg)))
+				p->ipc = IPC_PIPE;
+			else if (!strncmp(optarg, "msgq", strlen(optarg)))
+				p->ipc = IPC_MSGQ;
+			else
+				usage(p, stderr, EXIT_FAILURE);
 			break;
 		case 'h':
-			usage(stdout, EXIT_SUCCESS);
+			usage(p, stdout, EXIT_SUCCESS);
 			break;
 		case '?':
 		default:
-			usage(stderr, EXIT_FAILURE);
+			usage(p, stderr, EXIT_FAILURE);
 			break;
 		}
 	}
-	if (init(timeout, STDIN_FILENO))
+	if (init(p, STDIN_FILENO))
 		return 1;
 
 	/* let's roll */
-	print_prompt();
+	print_prompt(p);
 	while ((cmd = fgets(line, sizeof(line), stdin)))
-		if ((ret = process(cmd)))
+		if ((ret = (*p->c.handle)(p, cmd)))
 			return 1;
 	putchar('\n');
+
 	return 0;
 }

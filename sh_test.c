@@ -11,7 +11,7 @@ int main(void)
 	char *const target = realpath("./sh", NULL);
 	const struct test {
 		const char	*const name;
-		char		*const argv[6];
+		char		*const argv[8];
 		const char	*const cmd;
 		int		want;
 	} *t, tests[] = {
@@ -58,28 +58,52 @@ int main(void)
 			.want	= 0,
 		},
 		{
-			.name	= "version and exit command",
+			.name	= "version and exit commands",
 			.argv	= {target, NULL},
 			.cmd	= "version\nexit\n",
 			.want	= 0,
 		},
 		{
-			.name	= "v and exit command",
+			.name	= "v and exit commands",
 			.argv	= {target, NULL},
 			.cmd	= "v\nexit\n",
 			.want	= 0,
 		},
 		{
-			.name	= "date and exit command",
+			.name	= "date and exit commands",
 			.argv	= {target, NULL},
 			.cmd	= "date\nexit\n",
 			.want	= 0,
 		},
 		{
-			.name	= "ls -l and exit command",
+			.name	= "ls -l and exit commands",
 			.argv	= {target, NULL},
 			.cmd	= "ls -l\nexit\n",
 			.want	= 0,
+		},
+		{
+			.name	= "date and exit commands with pipe IPC mode",
+			.argv	= {target, "-i", "pipe", NULL},
+			.cmd	= "date\nexit\n",
+			.want	= 1,
+		},
+		{
+			.name	= "ls -l and exit commands with pipe IPC mode",
+			.argv	= {target, "-i", "pipe", NULL},
+			.cmd	= "ls -l\nexit\n",
+			.want	= 1,
+		},
+		{
+			.name	= "date and exit commands with msgq IPC mode",
+			.argv	= {target, "-i", "msgq", NULL},
+			.cmd	= "date\nexit\n",
+			.want	= 1,
+		},
+		{
+			.name	= "ls -l and exit commands with msgq IPC mode",
+			.argv	= {target, "-i", "msgq", NULL},
+			.cmd	= "ls -l\nexit\n",
+			.want	= 1,
 		},
 		{ .name = NULL }, /* sentry */
 	};
