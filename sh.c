@@ -19,14 +19,14 @@
 typedef enum ipc_type {
 	IPC_NONE = 0,
 	IPC_PIPE,
-	IPC_MSGQ,
 } ipc_t;
 
 struct process;
 
+/* command handler client */
 struct client {
-	int			(*handle)(const struct process *restrict p,
-					  char *cmdline);
+	const struct process	*p;
+	int			(*handle)(struct client *c, char *const argv[]);
 };
 
 static struct process {
@@ -43,6 +43,8 @@ static struct process {
 	.timeout	= 30,
 	.prompt		= "sh",
 	.ipc		= IPC_NONE,
+	.c.p		= NULL,
+	.c.handle	= NULL,
 	.delim		= " \t\n",
 	.version	= "1.0.1",
 	.opts		= "t:p:i:h",
@@ -72,7 +74,7 @@ static void usage(const struct process *restrict p, FILE *stream, int status)
 				p->prompt);
 			break;
 		case 'i':
-			fprintf(stream, "\tIPC type [none|pipe|msgq] (default: none)\n");
+			fprintf(stream, "\tIPC type [none|pipe] (default: none)\n");
 			break;
 		case 'h':
 			fprintf(stream, "\tdisplay this message and exit\n");
@@ -135,9 +137,15 @@ static int init_io(int fd)
 	return 0;
 }
 
+static int is_print_prompt(const struct process *const p)
+{
+	return p->prompt[0] != '\0';
+}
+
 static void print_prompt(const struct process *const p)
 {
-	printf("%s$ ", p->prompt);
+	if (is_print_prompt(p))
+		printf("%s$ ", p->prompt);
 }
 
 static int exit_handler(int argc, char *const argv[])
@@ -153,7 +161,200 @@ static int version_handler(int argc, char *const argv[])
 	return 0;
 }
 
-/* shell command and the handler */
+static int client_handle(struct client *ctx, char *const argv[])
+{
+	int ret, status;
+	pid_t pid;
+
+	pid = fork();
+	if (pid == -1) {
+		perror("fork");
+		return -1;
+	} else if (pid == 0) {
+		ret = execvp(argv[0], argv);
+		if (ret == -1) {
+			perror("execvp");
+			exit(EXIT_FAILURE);
+		}
+		/* not reachable */
+	}
+	ret = wait(&status);
+	if (ret == -1) {
+		perror("wait");
+		return -1;
+	}
+	if (WIFSIGNALED(status)) {
+		fprintf(stderr, "child exit with signal(%s)\n",
+			strsignal(WTERMSIG(status)));
+		return -1;
+	}
+	if (WIFEXITED(status) && WEXITSTATUS(status))
+		return WEXITSTATUS(status);
+	return 0;
+}
+
+static int client_handle_pipe(struct client *ctx, char *const argv[])
+{
+	int i, ret, status, in[2], out[2];
+	char *ptr, buf[LINE_MAX];
+	FILE *file[2];
+	ssize_t len;
+	pid_t pid;
+
+	ret = pipe(in);
+	if (ret == -1) {
+		perror("pipe(in)");
+		return -1;
+	}
+	ret = pipe(out);
+	if (ret == -1) {
+		perror("pipe(out)");
+		return -1;
+	}
+	pid = fork();
+	if (pid == -1) {
+		perror("fork");
+		return -1;
+	} else if (pid == 0) {
+		char *const path = realpath("./sh", NULL);
+		char *const argv[] = {path, "-p", "", NULL};
+		if (path == NULL) {
+			perror("realpath");
+			exit(EXIT_FAILURE);
+		}
+		ret = dup2(in[0], STDIN_FILENO);
+		if (ret == -1) {
+			perror("dup(in)");
+			exit(EXIT_FAILURE);
+		}
+		ret = close(in[1]);
+		if (ret == -1) {
+			perror("close(in)");
+			exit(EXIT_FAILURE);
+		}
+		ret = dup2(out[1], STDOUT_FILENO);
+		if (ret == -1) {
+			perror("dup(out)");
+			exit(EXIT_FAILURE);
+		}
+		ret = close(out[0]);
+		if (ret == -1) {
+			perror("close(out)");
+			exit(EXIT_FAILURE);
+		}
+		ret = execv(path, argv);
+		if (ret == -1) {
+			perror("execv");
+			exit(EXIT_FAILURE);
+		}
+		/* not reachable */
+	}
+	file[0] = fdopen(out[0], "r");
+	if (file[0] == NULL) {
+		perror("fdopen");
+		goto err;
+	}
+	file[1] = fdopen(in[1], "w");
+	if (file[1] == NULL) {
+		perror("fdopen");
+		goto err;
+	}
+	ret = close(in[0]);
+	if (ret == -1) {
+		perror("close(in)");
+		goto err;
+	}
+	ret = close(out[1]);
+	if (ret == -1) {
+		perror("close(out)");
+		goto err;
+	}
+	/* recreate the command line */
+	len = sizeof(buf)-2;
+	ptr = buf;
+	i = 0;
+	for (i = 0; argv[i]; i++) {
+		int n = snprintf(ptr, len, "%s ", argv[i]);
+		if (n < 0) {
+			perror("snprintf");
+			goto err;
+		}
+		len -= n;
+		ptr += n;
+	}
+	*ptr++ = '\n';
+	*ptr = '\0';
+	if (fputs(buf, file[1]) == EOF) {
+		perror("write");
+		goto err;
+	}
+	ret = fclose(file[1]);
+	if (ret == -1) {
+		perror("close");
+		goto err;
+	}
+	while (fgets(buf, sizeof(buf), file[0]))
+		if (fputs(buf, stdout) == EOF)
+			break;
+	ret = waitpid(pid, &status, 0);
+	if (ret == -1) {
+		perror("waitpid");
+		return -1;
+	}
+	if (WIFSIGNALED(status)) {
+		fprintf(stderr, "child exit with signal(%s)\n",
+			strsignal(WTERMSIG(status)));
+		return -1;
+	}
+	if (!WIFEXITED(status)) {
+		fprintf(stderr, "child does not exit\n");
+		return -1;
+	}
+	return WEXITSTATUS(status);
+err:
+	if (kill(pid, SIGTERM))
+		perror("kill");
+	if (waitpid(pid, &status, 0))
+		perror("waitpid");
+	return -1;
+}
+
+static int init_client(struct process *const p)
+{
+	switch (p->ipc) {
+	case IPC_NONE:
+		p->c.p = p;
+		p->c.handle = client_handle;
+		break;
+	case IPC_PIPE:
+		p->c.p = p;
+		p->c.handle = client_handle_pipe;
+		break;
+	default:
+		fprintf(stderr, "unknown ipc type: %d\n", p->ipc);
+		return -1;
+		break;
+	}
+	return 0;
+}
+
+static int init(struct process *const p, int fd)
+{
+	int ret;
+
+	ret = init_timeout(p->timeout);
+	if (ret == -1)
+		return ret;
+	ret = init_io(fd);
+	if (ret == -1)
+		return ret;
+	ret = init_client(p);
+	if (ret == -1)
+		return ret;
+	return 0;
+}
+
+/* shell/internal commands and the handlers */
 static const struct command {
 	const char	*const name;
 	const char	*const alias[2];
@@ -191,13 +392,13 @@ static const struct command *parse_command(char *argv0)
 	return NULL;
 }
 
-static int handle(const struct process *restrict p, char *cmdline)
+static int handle(struct client *ctx, char *cmdline)
 {
+	const struct process *const p = ctx->p;
 	char *save, *start = cmdline;
 	char *argv[ARG_MAX] = {NULL};
 	const struct command *cmd;
-	int i, ret, status;
-	pid_t pid;
+	int i, ret;
 
 	for (i = 0; i < ARG_MAX; i++) {
 		argv[i] = strtok_r(start, p->delim, &save);
@@ -208,69 +409,15 @@ static int handle(const struct process *restrict p, char *cmdline)
 	if (!argv[0])
 		return 0;
 
-	/* internal command handling */
-	if ((cmd = parse_command(argv[0]))) {
+	if ((cmd = parse_command(argv[0])))
+		/* internal command handling */
 		ret = (*cmd->handler)(i, argv);
-		if (!ret)
-			print_prompt(p);
+	else
+		/* external command handlingn */
+		ret = (*ctx->handle)(ctx, argv);
+	if (ret != 0)
 		return ret;
-	}
-
-	/* external command handling */
-	pid = fork();
-	if (pid == -1) {
-		perror("fork");
-		return -1;
-	} else if (pid == 0) {
-		ret = execvp(argv[0], argv);
-		if (ret == -1) {
-			perror("execvp");
-			exit(EXIT_FAILURE);
-		}
-		/* not reachable */
-	}
-	ret = wait(&status);
-	if (ret == -1) {
-		perror("wait");
-		return -1;
-	}
-	if (WIFSIGNALED(status)) {
-		fprintf(stderr, "child exit with signal(%s)\n",
-			strsignal(WTERMSIG(status)));
-		return -1;
-	}
-	if (WIFEXITED(status) && WEXITSTATUS(status))
-		return WEXITSTATUS(status);
 	print_prompt(p);
-	return 0;
-}
-
-static int init_client(struct process *const p)
-{
-	switch (p->ipc) {
-	case IPC_NONE:
-		p->c.handle = handle;
-		return 0;
-	default:
-		fprintf(stderr, "unknown ipc type: %d\n", p->ipc);
-		break;
-	}
-	return -1;
-}
-
-static int init(struct process *const p, int fd)
-{
-	int ret;
-
-	ret = init_timeout(p->timeout);
-	if (ret == -1)
-		return ret;
-	ret = init_io(fd);
-	if (ret == -1)
-		return ret;
-	ret = init_client(p);
-	if (ret == -1)
-		return ret;
 	return 0;
 }
 
@@ -298,8 +445,6 @@ int main(int argc, char *const argv[])
 				p->ipc = IPC_NONE;
 			else if (!strncmp(optarg, "pipe", strlen(optarg)))
 				p->ipc = IPC_PIPE;
-			else if (!strncmp(optarg, "msgq", strlen(optarg)))
-				p->ipc = IPC_MSGQ;
 			else
 				usage(p, stderr, EXIT_FAILURE);
 			break;
@@ -318,9 +463,10 @@ int main(int argc, char *const argv[])
 	/* let's roll */
 	print_prompt(p);
 	while ((cmd = fgets(line, sizeof(line), stdin)))
-		if ((ret = (*p->c.handle)(p, cmd)))
+		if ((ret = handle(&p->c, cmd)))
 			return 1;
-	putchar('\n');
+	if (is_print_prompt(p))
+		putchar('\n');
 
 	return 0;
 }

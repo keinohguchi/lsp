@@ -85,13 +85,13 @@ int main(void)
 			.name	= "date and exit commands with pipe IPC mode",
 			.argv	= {target, "-i", "pipe", NULL},
 			.cmd	= "date\nexit\n",
-			.want	= 1,
+			.want	= 0,
 		},
 		{
 			.name	= "ls -l and exit commands with pipe IPC mode",
 			.argv	= {target, "-i", "pipe", NULL},
 			.cmd	= "ls -l\nexit\n",
-			.want	= 1,
+			.want	= 0,
 		},
 		{
 			.name	= "date and exit commands with msgq IPC mode",
