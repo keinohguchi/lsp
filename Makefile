@@ -31,6 +31,7 @@ CFLAGS += -Wall
 CFLAGS += -Werror
 CFLAGS += -g
 CFLAGS += -lpthread
+CFLAGS += -lrt
 CFLAGS += -D_GNU_SOURCE
 .PHONY: all help test check clean $(TESTS)
 all: $(PROGS)

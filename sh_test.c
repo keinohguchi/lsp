@@ -97,13 +97,13 @@ int main(void)
 			.name	= "date and exit commands with msgq IPC mode",
 			.argv	= {target, "-i", "msgq", NULL},
 			.cmd	= "date\nexit\n",
-			.want	= 1,
+			.want	= 0,
 		},
 		{
 			.name	= "ls -l and exit commands with msgq IPC mode",
 			.argv	= {target, "-i", "msgq", NULL},
 			.cmd	= "ls -l\nexit\n",
-			.want	= 1,
+			.want	= 0,
 		},
 		{ .name = NULL }, /* sentry */
 	};

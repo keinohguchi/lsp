@@ -4,10 +4,13 @@
 #include <limits.h>
 #include <getopt.h>
 #include <string.h>
+#include <strings.h>
 #include <signal.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <mqueue.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 
 #include "ls.h"
@@ -19,6 +22,7 @@
 typedef enum ipc_type {
 	IPC_NONE = 0,
 	IPC_PIPE,
+	IPC_MSGQ,
 } ipc_t;
 
 struct process;
@@ -26,6 +30,7 @@ struct process;
 /* command handler client */
 struct client {
 	const struct process	*p;
+	const char		*const msgq;
 	int			(*handle)(struct client *c, char *const argv[]);
 };
 
@@ -44,6 +49,7 @@ static struct process {
 	.prompt		= "sh",
 	.ipc		= IPC_NONE,
 	.c.p		= NULL,
+	.c.msgq		= "/somemsgq",
 	.c.handle	= NULL,
 	.delim		= " \t\n",
 	.version	= "1.0.1",
@@ -74,7 +80,7 @@ static void usage(const struct process *restrict p, FILE *stream, int status)
 				p->prompt);
 			break;
 		case 'i':
-			fprintf(stream, "\tIPC type [none|pipe] (default: none)\n");
+			fprintf(stream, "\tIPC type [none|pipe|msgq] (default: none)\n");
 			break;
 		case 'h':
 			fprintf(stream, "\tdisplay this message and exit\n");
@@ -319,22 +325,50 @@ err:
 	return -1;
 }
 
+static int client_handle_msgq(struct client *ctx, char *const argv[])
+{
+	const struct mq_attr attr = {
+		.mq_flags	= 0,
+		.mq_maxmsg	= 10,
+		.mq_msgsize	= BUFSIZ,
+		.mq_curmsgs	= 0,
+	};
+	mqd_t mq;
+
+	mq = mq_open(ctx->msgq, O_CREAT|O_RDWR, 0644, &attr);
+	if (mq == -1) {
+		perror("mq_open");
+		return -1;
+	}
+	if (mq_unlink(ctx->msgq)) {
+		perror("mq_unlink");
+		return -1;
+	}
+	if (mq_close(mq)) {
+		perror("mq_close");
+		return -1;
+	}
+	return 0;
+}
+
 static int init_client(struct process *const p)
 {
 	switch (p->ipc) {
 	case IPC_NONE:
-		p->c.p = p;
 		p->c.handle = client_handle;
 		break;
 	case IPC_PIPE:
-		p->c.p = p;
 		p->c.handle = client_handle_pipe;
+		break;
+	case IPC_MSGQ:
+		p->c.handle = client_handle_msgq;
 		break;
 	default:
 		fprintf(stderr, "unknown ipc type: %d\n", p->ipc);
 		return -1;
 		break;
 	}
+	p->c.p = p;
 	return 0;
 }
 
@@ -383,10 +417,10 @@ static const struct command *parse_command(char *argv0)
 	const struct command *cmd;
 	for (cmd = cmds; cmd->name; cmd++) {
 		int i;
-		if (!strncmp(argv0, cmd->name, strlen(argv0)))
+		if (!strncasecmp(argv0, cmd->name, strlen(argv0)))
 			return cmd;
 		for (i = 0; cmd->alias[i]; i++)
-			if (!strncmp(argv0, cmd->alias[i], strlen(argv0)))
+			if (!strncasecmp(argv0, cmd->alias[i], strlen(argv0)))
 				return cmd;
 	}
 	return NULL;
@@ -413,7 +447,7 @@ static int handle(struct client *ctx, char *cmdline)
 		/* internal command handling */
 		ret = (*cmd->handler)(i, argv);
 	else
-		/* external command handlingn */
+		/* external command handling */
 		ret = (*ctx->handle)(ctx, argv);
 	if (ret != 0)
 		return ret;
@@ -441,10 +475,12 @@ int main(int argc, char *const argv[])
 			p->prompt = optarg;
 			break;
 		case 'i':
-			if (!strncmp(optarg, "none", strlen(optarg)))
+			if (!strncasecmp(optarg, "none", strlen(optarg)))
 				p->ipc = IPC_NONE;
-			else if (!strncmp(optarg, "pipe", strlen(optarg)))
+			else if (!strncasecmp(optarg, "pipe", strlen(optarg)))
 				p->ipc = IPC_PIPE;
+			else if (!strncasecmp(optarg, "msgq", strlen(optarg)))
+				p->ipc = IPC_MSGQ;
 			else
 				usage(p, stderr, EXIT_FAILURE);
 			break;
