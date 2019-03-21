@@ -4,6 +4,7 @@ a.out
 *.~
 cscope.*
 liblsp.a
+select
 inode
 block
 wait

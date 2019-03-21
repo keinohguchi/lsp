@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0
-PROGS := inode
+PROGS := select
+PROGS += inode
 PROGS += block
 PROGS += wait
 PROGS += system
