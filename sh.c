@@ -291,17 +291,21 @@ static int client_handle_pipe(struct client *ctx, char *const argv[])
 	*ptr++ = '\n';
 	*ptr = '\0';
 	if (fputs(buf, file[1]) == EOF) {
-		perror("write");
+		perror("fputs");
 		goto err;
 	}
 	ret = fclose(file[1]);
 	if (ret == -1) {
-		perror("close");
+		perror("fclose");
 		goto err;
 	}
 	while (fgets(buf, sizeof(buf), file[0]))
 		if (fputs(buf, stdout) == EOF)
 			break;
+	if (fclose(file[0])) {
+		perror("fclose");
+		goto err;
+	}
 	ret = waitpid(pid, &status, 0);
 	if (ret == -1) {
 		perror("waitpid");
