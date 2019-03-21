@@ -41,6 +41,7 @@ int main(int argc, char *const argv[])
 	gid_t gid;
 	int opt;
 
+	progname = argv[0];
 	while ((opt = getopt_long(argc, argv, opts, lopts, NULL)) != -1) {
 		switch (opt) {
 		case 'h':
