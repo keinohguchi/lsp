@@ -31,9 +31,9 @@ CC     ?= gcc
 CFLAGS += -Wall
 CFLAGS += -Werror
 CFLAGS += -g
+CFLAGS += -D_GNU_SOURCE
 CFLAGS += -lpthread
 CFLAGS += -lrt
-CFLAGS += -D_GNU_SOURCE
 .PHONY: all help test check clean $(TESTS)
 all: $(PROGS)
 ls: ls_main.o $(LIB)

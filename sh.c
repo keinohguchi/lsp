@@ -30,7 +30,7 @@ struct process;
 /* command handler client */
 struct client {
 	const struct process	*p;
-	const char		*const msgq;
+	const char		*const mqpath;
 	int			(*handle)(struct client *c, char *const argv[]);
 };
 
@@ -49,10 +49,10 @@ static struct process {
 	.prompt		= "sh",
 	.ipc		= IPC_NONE,
 	.c.p		= NULL,
-	.c.msgq		= "/somemsgq",
+	.c.mqpath	= "/somemsgq",
 	.c.handle	= NULL,
 	.delim		= " \t\n",
-	.version	= "1.0.1",
+	.version	= "1.0.2",
 	.opts		= "t:p:i:h",
 	.lopts		= {
 		{"timeout",	required_argument,	NULL,	't'},
@@ -167,7 +167,7 @@ static int version_handler(int argc, char *const argv[])
 	return 0;
 }
 
-static int client_handle(struct client *ctx, char *const argv[])
+static int client_handler(struct client *ctx, char *const argv[])
 {
 	int ret, status;
 	pid_t pid;
@@ -199,7 +199,7 @@ static int client_handle(struct client *ctx, char *const argv[])
 	return 0;
 }
 
-static int client_handle_pipe(struct client *ctx, char *const argv[])
+static int client_pipe_handler(struct client *ctx, char *const argv[])
 {
 	int i, ret, status, in[2], out[2];
 	char *ptr, buf[LINE_MAX];
@@ -329,43 +329,108 @@ err:
 	return -1;
 }
 
-static int client_handle_msgq(struct client *ctx, char *const argv[])
+static int server_mq_handler(mqd_t mq)
+{
+	char buf[LINE_MAX];
+	int ret;
+
+	ret = mq_receive(mq, buf, sizeof(buf), NULL);
+	if (ret == -1) {
+		perror("mq_receive");
+		goto out;
+	}
+out:
+	if (mq_close(mq))
+		perror("mq_close");
+	return ret;
+}
+
+static int client_mq_handler(struct client *ctx, char *const argv[])
 {
 	const struct mq_attr attr = {
 		.mq_flags	= 0,
 		.mq_maxmsg	= 10,
-		.mq_msgsize	= BUFSIZ,
+		.mq_msgsize	= LINE_MAX,
 		.mq_curmsgs	= 0,
 	};
+	char *ptr, buf[LINE_MAX];
+	int len = sizeof(buf);
+	int ret, status;
+	pid_t pid;
 	mqd_t mq;
+	int i;
 
-	mq = mq_open(ctx->msgq, O_CREAT|O_RDWR, 0644, &attr);
+	mq = mq_open(ctx->mqpath, O_CREAT|O_RDWR, 0644, &attr);
 	if (mq == -1) {
 		perror("mq_open");
 		return -1;
 	}
-	if (mq_unlink(ctx->msgq)) {
+	if (mq_unlink(ctx->mqpath)) {
 		perror("mq_unlink");
 		return -1;
 	}
+	pid = fork();
+	if (pid == -1) {
+		perror("fork");
+		return -1;
+	} else if (pid == 0) {
+		ret = server_mq_handler(mq);
+		if (ret)
+			exit(EXIT_FAILURE);
+		exit(EXIT_SUCCESS);
+	}
+	ptr = buf;
+	for (i = 0; argv[i]; i++) {
+		ret = snprintf(ptr, len, "%s ", argv[i]);
+		if (ret < 0) {
+			perror("snprintf");
+			goto err;
+		}
+		ptr += ret;
+		len -= ret;
+	}
+	*ptr = '\0';
+	ret = mq_send(mq, buf, strlen(buf), 0);
+	if (ret == -1) {
+		perror("mq_send");
+		goto err;
+	}
+err:
+	ret = waitpid(pid, &status, 0);
+	if (ret == -1) {
+		perror("waitpid");
+		goto out;
+	}
+	ret = -1;
+	if (WIFSIGNALED(status)) {
+		fprintf(stderr, "child exit with signal(%s)\n",
+			strsignal(WTERMSIG(status)));
+		goto out;
+	}
+	if (!WIFEXITED(status)) {
+		fprintf(stderr, "child did not exit\n");
+		goto out;
+	}
+	ret = 0;
+out:
 	if (mq_close(mq)) {
 		perror("mq_close");
 		return -1;
 	}
-	return 0;
+	return ret;
 }
 
 static int init_client(struct process *const p)
 {
 	switch (p->ipc) {
 	case IPC_NONE:
-		p->c.handle = client_handle;
+		p->c.handle = client_handler;
 		break;
 	case IPC_PIPE:
-		p->c.handle = client_handle_pipe;
+		p->c.handle = client_pipe_handler;
 		break;
 	case IPC_MSGQ:
-		p->c.handle = client_handle_msgq;
+		p->c.handle = client_mq_handler;
 		break;
 	default:
 		fprintf(stderr, "unknown ipc type: %d\n", p->ipc);
