@@ -357,9 +357,9 @@ static int mq_server(const struct process *restrict p)
 	FILE *file = NULL;
 	char *ptr, buf[LINE_MAX];
 	size_t len, total, remain;
+	int ret, status;
 	pid_t pid;
 	int out[2];
-	int ret;
 
 	ret = mq_receive(p->mq, buf, sizeof(buf), NULL);
 	if (ret == -1) {
@@ -436,6 +436,21 @@ static int mq_server(const struct process *restrict p)
 		perror("sem_post");
 		goto out;
 	}
+	ret = waitpid(pid, &status, 0);
+	if (ret == -1) {
+		perror("waitpid");
+		goto out;
+	}
+	if (WIFSIGNALED(status)) {
+		fprintf(stderr, "child exit with signal(%s)\n",
+			strsignal(WTERMSIG(status)));
+		goto out;
+	}
+	if (!WIFEXITED(status)) {
+		fprintf(stderr, "child does not exit\n");
+		goto out;
+	}
+	ret = WEXITSTATUS(status);
 out:
 	if (msg)
 		if (munmap(msg, p->shmsize))
