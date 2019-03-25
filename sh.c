@@ -329,17 +329,40 @@ err:
 	return -1;
 }
 
-static int server_mq_handler(mqd_t mq)
+static int server_mq_handler(const struct process *restrict p, mqd_t mq, int fd)
 {
-	char buf[LINE_MAX];
-	int ret;
+	char *argv[ARG_MAX] = {NULL};
+	char *save, buf[LINE_MAX];
+	char *start = buf;
+	int i, ret;
 
+	ret = dup2(fd, STDOUT_FILENO);
+	if (ret == -1){
+		perror("dup2");
+		goto out;
+	}
 	ret = mq_receive(mq, buf, sizeof(buf), NULL);
 	if (ret == -1) {
 		perror("mq_receive");
 		goto out;
 	}
+	for (i = 0; i < LINE_MAX; i++) {
+		argv[i] = strtok_r(start, p->delim, &save);
+		if (argv[i] == NULL)
+			break;
+		start = NULL;
+	}
+	if (argv[0] == NULL)
+		goto out;
+	ret = execvp(argv[0], argv);
+	if (ret == -1) {
+		perror("execvp");
+		goto out;
+	}
+	/* not reachable */
 out:
+	if (close(fd))
+		perror("close");
 	if (mq_close(mq))
 		perror("mq_close");
 	return ret;
@@ -356,6 +379,8 @@ static int client_mq_handler(struct client *ctx, char *const argv[])
 	char *ptr, buf[LINE_MAX];
 	int len = sizeof(buf);
 	int ret, status;
+	FILE *file = NULL;
+	int out[2];
 	pid_t pid;
 	mqd_t mq;
 	int i;
@@ -367,17 +392,37 @@ static int client_mq_handler(struct client *ctx, char *const argv[])
 	}
 	if (mq_unlink(ctx->mqpath)) {
 		perror("mq_unlink");
-		return -1;
+		goto out;
+	}
+	ret = pipe(out);
+	if (ret == -1) {
+		perror("pipe");
+		goto out;
 	}
 	pid = fork();
 	if (pid == -1) {
 		perror("fork");
 		return -1;
 	} else if (pid == 0) {
-		ret = server_mq_handler(mq);
+		ret = close(out[0]);
+		if (ret == -1) {
+			perror("close");
+			exit(EXIT_FAILURE);
+		}
+		ret = server_mq_handler(ctx->p, mq, out[1]);
 		if (ret)
 			exit(EXIT_FAILURE);
 		exit(EXIT_SUCCESS);
+	}
+	ret = close(out[1]);
+	if (ret == -1) {
+		perror("close");
+		goto err;
+	}
+	file = fdopen(out[0], "r");
+	if (file == NULL) {
+		perror("fdopen");
+		goto err;
 	}
 	ptr = buf;
 	for (i = 0; argv[i]; i++) {
@@ -395,6 +440,9 @@ static int client_mq_handler(struct client *ctx, char *const argv[])
 		perror("mq_send");
 		goto err;
 	}
+	while (fgets(buf, sizeof(buf), file))
+		if (fputs(buf, stdout) == EOF)
+			break;
 err:
 	ret = waitpid(pid, &status, 0);
 	if (ret == -1) {
@@ -413,10 +461,11 @@ err:
 	}
 	ret = 0;
 out:
-	if (mq_close(mq)) {
+	if (file)
+		if (fclose(file))
+			perror("fclose");
+	if (mq_close(mq))
 		perror("mq_close");
-		return -1;
-	}
 	return ret;
 }
 
