@@ -13,6 +13,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <sys/mman.h>
 
 #include "ls.h"
 
@@ -34,9 +35,12 @@ static struct process {
 	const char		*delim;
 	const char		*const mqpath;
 	const char		*const sempath;
+	const char		*const shmpath;
 	mqd_t			mq;
 	struct mq_attr		mq_attr;
 	sem_t			*sem;
+	int			shm;
+	off_t			shmsize;
 	int			(*handle)(const struct process *restrict p,
 					  char *const argv[]);
 	const char		*const version;
@@ -46,8 +50,9 @@ static struct process {
 	.timeout	= 30,
 	.prompt		= "sh",
 	.ipc		= IPC_NONE,
-	.mqpath		= "/somemsgq",
+	.mqpath		= "/somemq",
 	.sempath	= "/somesem",
+	.shmpath	= "/someshm",
 	.mq		= -1,
 	.mq_attr	= {
 		.mq_flags	= 0,
@@ -56,6 +61,7 @@ static struct process {
 		.mq_curmsgs	= 0,
 	},
 	.sem		= NULL,
+	.shm		= -1,
 	.delim		= " \t\n",
 	.handle		= NULL,
 	.version	= "1.0.2",
@@ -67,6 +73,12 @@ static struct process {
 		{"help",	no_argument,		NULL,	'h'},
 		{NULL, 0, NULL, 0},
 	},
+};
+
+/* message passed over the shared memory */
+struct message {
+	u_int32_t	len;
+	char		data[];
 };
 
 static void usage(const struct process *restrict p, FILE *stream, int status)
@@ -339,45 +351,98 @@ err:
 	return -1;
 }
 
-static int mq_server(const struct process *restrict p, int fd)
+static int mq_server(const struct process *restrict p)
 {
-	char *argv[ARG_MAX] = {NULL};
-	char *save, buf[LINE_MAX];
-	char *start = buf;
-	int i, ret;
+	struct message *msg = NULL;
+	FILE *file = NULL;
+	char *ptr, buf[LINE_MAX];
+	size_t len, total, remain;
+	pid_t pid;
+	int out[2];
+	int ret;
 
-	ret = dup2(fd, STDOUT_FILENO);
-	if (ret == -1){
-		perror("dup2");
-		goto out;
-	}
 	ret = mq_receive(p->mq, buf, sizeof(buf), NULL);
 	if (ret == -1) {
 		perror("mq_receive");
 		goto out;
 	}
-	for (i = 0; i < LINE_MAX; i++) {
-		argv[i] = strtok_r(start, p->delim, &save);
-		if (argv[i] == NULL)
-			break;
-		start = NULL;
+	ret = pipe(out);
+	if (ret == -1) {
+		perror("pipe");
+		goto out;
 	}
+	pid = fork();
+	if (pid == -1) {
+		perror("fork");
+		goto out;
+	} else if (pid == 0) {
+		char *argv[ARG_MAX] = {NULL};
+		char *save, *start = buf;
+		int i, ret;
+
+		if (close(out[0])) {
+			perror("close");
+			exit(EXIT_FAILURE);
+		}
+		ret = dup2(out[1], STDOUT_FILENO);
+		if (ret == -1) {
+			perror("dup2");
+			exit(EXIT_FAILURE);
+		}
+		for (i = 0; i < LINE_MAX; i++) {
+			argv[i] = strtok_r(start, p->delim, &save);
+			if (argv[i] == NULL)
+				break;
+			start = NULL;
+		}
+		ret = execvp(argv[0], argv);
+		if (ret == -1) {
+			perror("execvp");
+			exit(EXIT_FAILURE);
+		}
+		/* not reached */
+	}
+	ret = close(out[1]);
+	if (ret == -1) {
+		perror("close");
+		goto out;
+	}
+	file = fdopen(out[0], "r");
+	if (file == NULL) {
+		perror("fdopen");
+		goto out;
+	}
+	msg = mmap(NULL, p->shmsize, PROT_WRITE, MAP_SHARED, p->shm, 0);
+	if (msg == NULL) {
+		perror("mmap");
+		goto out;
+	}
+	remain = p->shmsize-sizeof(msg->len);
+	total = msg->len = 0;
+	ptr = (char *)msg->data;
+	while ((len = fread(ptr, 1, remain, file))) {
+	       remain -= len;
+	       total += len;
+	       ptr += len;
+	}
+	if (ferror(file)) {
+		perror("fread");
+		ret = -1;
+		goto out;
+	}
+	msg->len = total;
 	ret = sem_post(p->sem);
 	if (ret == -1) {
 		perror("sem_post");
 		goto out;
 	}
-	if (argv[0] == NULL)
-		goto out;
-	ret = execvp(argv[0], argv);
-	if (ret == -1) {
-		perror("execvp");
-		goto out;
-	}
-	/* not reachable */
 out:
-	if (close(fd))
-		perror("close");
+	if (msg)
+		if (munmap(msg, p->shmsize))
+		    perror("munmap");
+	if (file)
+		if (fclose(file))
+			perror("fclose");
 	if (mq_close(p->mq))
 		perror("mq_close");
 	if (sem_close(p->sem))
@@ -387,43 +452,23 @@ out:
 
 static int mq_handler(const struct process *restrict p, char *const argv[])
 {
+	struct message *msg = NULL;
 	char *ptr, buf[LINE_MAX];
 	int len = sizeof(buf);
 	int ret, status;
-	FILE *file = NULL;
-	int out[2];
+	size_t n, remain;
 	pid_t pid;
 	int i;
 
-	ret = pipe(out);
-	if (ret == -1) {
-		perror("pipe");
-		goto out;
-	}
 	pid = fork();
 	if (pid == -1) {
 		perror("fork");
 		return -1;
 	} else if (pid == 0) {
-		ret = close(out[0]);
-		if (ret == -1) {
-			perror("close");
-			exit(EXIT_FAILURE);
-		}
-		ret = mq_server(p, out[1]);
+		ret = mq_server(p);
 		if (ret)
 			exit(EXIT_FAILURE);
 		exit(EXIT_SUCCESS);
-	}
-	ret = close(out[1]);
-	if (ret == -1) {
-		perror("close");
-		goto err;
-	}
-	file = fdopen(out[0], "r");
-	if (file == NULL) {
-		perror("fdopen");
-		goto err;
 	}
 	ptr = buf;
 	for (i = 0; argv[i]; i++) {
@@ -446,9 +491,24 @@ static int mq_handler(const struct process *restrict p, char *const argv[])
 		perror("sem_wait");
 		goto err;
 	}
-	while (fgets(buf, sizeof(buf), file))
-		if (fputs(buf, stdout) == EOF)
+	msg = mmap(NULL, p->shmsize, PROT_READ, MAP_SHARED, p->shm, 0);
+	if (msg == NULL) {
+		perror("mmap");
+		goto err;
+	}
+	ptr = msg->data;
+	for (remain = msg->len; remain > 0; remain -= n) {
+		n = write(STDOUT_FILENO, ptr, remain);
+		if (n == -1) {
+			perror("write");
 			break;
+		}
+	}
+	ret = munmap(msg, p->shmsize);
+	if (ret == -1) {
+		perror("munmap");
+		goto err;
+	}
 err:
 	ret = waitpid(pid, &status, 0);
 	if (ret == -1) {
@@ -467,9 +527,9 @@ err:
 	}
 	ret = 0;
 out:
-	if (file)
-		if (fclose(file))
-			perror("fclose");
+	if (msg)
+		if (munmap(msg, sizeof(u_int32_t)))
+			perror("munmap");
 	return ret;
 }
 
@@ -500,14 +560,51 @@ static int init_mq_handler(struct process *const p)
 		perror("mq_unlink");
 		goto err;
 	}
+	/* shared memory for the command response */
+	ret = shm_open(p->shmpath, O_CREAT|O_RDWR|O_EXCL, 0600);
+	if (ret == -1) {
+		perror("shm_open");
+		goto err;
+	}
+	p->shm = ret;
+	ret = shm_unlink(p->shmpath);
+	if (ret == -1) {
+		perror("shm_unlink");
+		goto err;
+	}
+	/* limit the shared memory to the 4 x page size */
+	ret = sysconf(_SC_PAGESIZE);
+	if (ret == -1) {
+		perror("sysconf");
+		goto err;
+	}
+	p->shmsize = ret*4;
+	ret = ftruncate(p->shm, p->shmsize);
+	if (ret == -1) {
+		perror("ftruncate");
+		goto err;
+	}
 	p->handle = mq_handler;
 	return 0;
 err:
-	if (p->mq)
+	if (p->shm != -1) {
+		if (close(p->shm))
+			perror("close");
+		if (shm_unlink(p->shmpath))
+			perror("shm_unlink");
+	}
+	if (p->mq != -1) {
 		if (mq_close(p->mq))
 			perror("mq_close");
-	if (sem_close(p->sem))
-		perror("sem_close");
+		if (mq_unlink(p->mqpath))
+			perror("mq_unlink");
+	}
+	if (p->sem) {
+		if (sem_close(p->sem))
+			perror("sem_close");
+		if (sem_unlink(p->sempath))
+			perror("sem_unlink");
+	}
 	return ret;
 }
 
@@ -550,6 +647,9 @@ static int init(struct process *const p, int fd)
 
 static void term(const struct process *restrict p)
 {
+	if (p->shm != -1)
+		if (close(p->shm))
+			perror("close");
 	if (p->mq != -1)
 		if (mq_close(p->mq))
 			perror("mq_close");
