@@ -26,19 +26,10 @@ typedef enum ipc_type {
 	IPC_MSGQ,
 } ipc_t;
 
-struct process;
-
-/* command handler client */
-struct client {
-	const struct process	*p;
-	int			(*handle)(struct client *c, char *const argv[]);
-};
-
 static struct process {
 	unsigned		timeout;
 	const char		*prompt;
 	ipc_t			ipc;
-	struct client		c;
 	const char		*progname;
 	const char		*delim;
 	const char		*const mqpath;
@@ -46,6 +37,8 @@ static struct process {
 	mqd_t			mq;
 	struct mq_attr		mq_attr;
 	sem_t			*sem;
+	int			(*handle)(const struct process *restrict p,
+					  char *const argv[]);
 	const char		*const version;
 	const char		*const opts;
 	const struct option	lopts[];
@@ -63,9 +56,8 @@ static struct process {
 		.mq_curmsgs	= 0,
 	},
 	.sem		= NULL,
-	.c.p		= NULL,
-	.c.handle	= NULL,
 	.delim		= " \t\n",
+	.handle		= NULL,
 	.version	= "1.0.2",
 	.opts		= "t:p:i:h",
 	.lopts		= {
@@ -185,7 +177,7 @@ static int version_handler(int argc, char *const argv[])
 	return 0;
 }
 
-static int client_handler(struct client *ctx, char *const argv[])
+static int handler(const struct process *restrict p, char *const argv[])
 {
 	int ret, status;
 	pid_t pid;
@@ -217,7 +209,7 @@ static int client_handler(struct client *ctx, char *const argv[])
 	return 0;
 }
 
-static int client_pipe_handler(struct client *ctx, char *const argv[])
+static int pipe_handler(const struct process *restrict p, char *const argv[])
 {
 	int i, ret, status, in[2], out[2];
 	char *ptr, buf[LINE_MAX];
@@ -347,7 +339,7 @@ err:
 	return -1;
 }
 
-static int server_mq_handler(const struct process *restrict p, int fd)
+static int mq_server(const struct process *restrict p, int fd)
 {
 	char *argv[ARG_MAX] = {NULL};
 	char *save, buf[LINE_MAX];
@@ -393,9 +385,8 @@ out:
 	return ret;
 }
 
-static int client_mq_handler(struct client *ctx, char *const argv[])
+static int mq_handler(const struct process *restrict p, char *const argv[])
 {
-	const struct process *const p = ctx->p;
 	char *ptr, buf[LINE_MAX];
 	int len = sizeof(buf);
 	int ret, status;
@@ -419,7 +410,7 @@ static int client_mq_handler(struct client *ctx, char *const argv[])
 			perror("close");
 			exit(EXIT_FAILURE);
 		}
-		ret = server_mq_handler(ctx->p, out[1]);
+		ret = mq_server(p, out[1]);
 		if (ret)
 			exit(EXIT_FAILURE);
 		exit(EXIT_SUCCESS);
@@ -445,7 +436,7 @@ static int client_mq_handler(struct client *ctx, char *const argv[])
 		len -= ret;
 	}
 	*ptr = '\0';
-	ret = mq_send(p->mq, buf, strlen(buf), 0);
+	ret = mq_send(p->mq, buf, strlen(buf)+1, 0); /* null terminater */
 	if (ret == -1) {
 		perror("mq_send");
 		goto err;
@@ -482,7 +473,7 @@ out:
 	return ret;
 }
 
-static int init_mq_client(struct process *const p)
+static int init_mq_handler(struct process *const p)
 {
 	int ret;
 
@@ -509,7 +500,7 @@ static int init_mq_client(struct process *const p)
 		perror("mq_unlink");
 		goto err;
 	}
-	p->c.handle = client_mq_handler;
+	p->handle = mq_handler;
 	return 0;
 err:
 	if (p->mq)
@@ -520,17 +511,17 @@ err:
 	return ret;
 }
 
-static int init_client(struct process *const p)
+static int init_handler(struct process *const p)
 {
 	switch (p->ipc) {
 	case IPC_NONE:
-		p->c.handle = client_handler;
+		p->handle = handler;
 		break;
 	case IPC_PIPE:
-		p->c.handle = client_pipe_handler;
+		p->handle = pipe_handler;
 		break;
 	case IPC_MSGQ:
-		if (init_mq_client(p) == -1)
+		if (init_mq_handler(p) == -1)
 			return -1;
 		break;
 	default:
@@ -538,7 +529,6 @@ static int init_client(struct process *const p)
 		return -1;
 		break;
 	}
-	p->c.p = p;
 	return 0;
 }
 
@@ -552,7 +542,7 @@ static int init(struct process *const p, int fd)
 	ret = init_io(fd);
 	if (ret == -1)
 		return ret;
-	ret = init_client(p);
+	ret = init_handler(p);
 	if (ret == -1)
 		return ret;
 	return 0;
@@ -606,9 +596,8 @@ static const struct command *parse_command(char *argv0)
 	return NULL;
 }
 
-static int handle(struct client *ctx, char *cmdline)
+static int handle(const struct process *restrict p, char *cmdline)
 {
-	const struct process *const p = ctx->p;
 	char *save, *start = cmdline;
 	char *argv[ARG_MAX] = {NULL};
 	const struct command *cmd;
@@ -628,7 +617,7 @@ static int handle(struct client *ctx, char *cmdline)
 		ret = (*cmd->handler)(i, argv);
 	else
 		/* external command handling */
-		ret = (*ctx->handle)(ctx, argv);
+		ret = (*p->handle)(p, argv);
 	if (ret != 0)
 		return ret;
 	print_prompt(p);
@@ -679,7 +668,7 @@ int main(int argc, char *const argv[])
 	/* let's roll */
 	print_prompt(p);
 	while ((cmd = fgets(line, sizeof(line), stdin)))
-		if ((ret = handle(&p->c, cmd)))
+		if ((ret = handle(p, cmd)))
 			goto out;
 	if (is_print_prompt(p))
 		putchar('\n');
