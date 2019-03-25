@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <mqueue.h>
+#include <semaphore.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -30,7 +31,6 @@ struct process;
 /* command handler client */
 struct client {
 	const struct process	*p;
-	const char		*const mqpath;
 	int			(*handle)(struct client *c, char *const argv[]);
 };
 
@@ -41,6 +41,11 @@ static struct process {
 	struct client		c;
 	const char		*progname;
 	const char		*delim;
+	const char		*const mqpath;
+	const char		*const sempath;
+	mqd_t			mq;
+	struct mq_attr		mq_attr;
+	sem_t			*sem;
 	const char		*const version;
 	const char		*const opts;
 	const struct option	lopts[];
@@ -48,8 +53,17 @@ static struct process {
 	.timeout	= 30,
 	.prompt		= "sh",
 	.ipc		= IPC_NONE,
+	.mqpath		= "/somemsgq",
+	.sempath	= "/somesem",
+	.mq		= -1,
+	.mq_attr	= {
+		.mq_flags	= 0,
+		.mq_maxmsg	= 10,
+		.mq_msgsize	= LINE_MAX,
+		.mq_curmsgs	= 0,
+	},
+	.sem		= NULL,
 	.c.p		= NULL,
-	.c.mqpath	= "/somemsgq",
 	.c.handle	= NULL,
 	.delim		= " \t\n",
 	.version	= "1.0.2",
@@ -93,11 +107,15 @@ static void usage(const struct process *restrict p, FILE *stream, int status)
 	exit(status);
 }
 
+static void term(const struct process *restrict p);
+
 static void timeout_handler(int signo)
 {
+	const struct process *const p = &process;
 	if (signo != SIGALRM)
 		return;
 	printf("\n");
+	term(p);
 	exit(EXIT_SUCCESS);
 }
 
@@ -329,7 +347,7 @@ err:
 	return -1;
 }
 
-static int server_mq_handler(const struct process *restrict p, mqd_t mq, int fd)
+static int server_mq_handler(const struct process *restrict p, int fd)
 {
 	char *argv[ARG_MAX] = {NULL};
 	char *save, buf[LINE_MAX];
@@ -341,7 +359,7 @@ static int server_mq_handler(const struct process *restrict p, mqd_t mq, int fd)
 		perror("dup2");
 		goto out;
 	}
-	ret = mq_receive(mq, buf, sizeof(buf), NULL);
+	ret = mq_receive(p->mq, buf, sizeof(buf), NULL);
 	if (ret == -1) {
 		perror("mq_receive");
 		goto out;
@@ -351,6 +369,11 @@ static int server_mq_handler(const struct process *restrict p, mqd_t mq, int fd)
 		if (argv[i] == NULL)
 			break;
 		start = NULL;
+	}
+	ret = sem_post(p->sem);
+	if (ret == -1) {
+		perror("sem_post");
+		goto out;
 	}
 	if (argv[0] == NULL)
 		goto out;
@@ -363,37 +386,24 @@ static int server_mq_handler(const struct process *restrict p, mqd_t mq, int fd)
 out:
 	if (close(fd))
 		perror("close");
-	if (mq_close(mq))
+	if (mq_close(p->mq))
 		perror("mq_close");
+	if (sem_close(p->sem))
+		perror("sem_close");
 	return ret;
 }
 
 static int client_mq_handler(struct client *ctx, char *const argv[])
 {
-	const struct mq_attr attr = {
-		.mq_flags	= 0,
-		.mq_maxmsg	= 10,
-		.mq_msgsize	= LINE_MAX,
-		.mq_curmsgs	= 0,
-	};
+	const struct process *const p = ctx->p;
 	char *ptr, buf[LINE_MAX];
 	int len = sizeof(buf);
 	int ret, status;
 	FILE *file = NULL;
 	int out[2];
 	pid_t pid;
-	mqd_t mq;
 	int i;
 
-	mq = mq_open(ctx->mqpath, O_CREAT|O_RDWR, 0644, &attr);
-	if (mq == -1) {
-		perror("mq_open");
-		return -1;
-	}
-	if (mq_unlink(ctx->mqpath)) {
-		perror("mq_unlink");
-		goto out;
-	}
 	ret = pipe(out);
 	if (ret == -1) {
 		perror("pipe");
@@ -409,7 +419,7 @@ static int client_mq_handler(struct client *ctx, char *const argv[])
 			perror("close");
 			exit(EXIT_FAILURE);
 		}
-		ret = server_mq_handler(ctx->p, mq, out[1]);
+		ret = server_mq_handler(ctx->p, out[1]);
 		if (ret)
 			exit(EXIT_FAILURE);
 		exit(EXIT_SUCCESS);
@@ -435,9 +445,14 @@ static int client_mq_handler(struct client *ctx, char *const argv[])
 		len -= ret;
 	}
 	*ptr = '\0';
-	ret = mq_send(mq, buf, strlen(buf), 0);
+	ret = mq_send(p->mq, buf, strlen(buf), 0);
 	if (ret == -1) {
 		perror("mq_send");
+		goto err;
+	}
+	ret = sem_wait(p->sem);
+	if (ret == -1) {
+		perror("sem_wait");
 		goto err;
 	}
 	while (fgets(buf, sizeof(buf), file))
@@ -464,8 +479,6 @@ out:
 	if (file)
 		if (fclose(file))
 			perror("fclose");
-	if (mq_close(mq))
-		perror("mq_close");
 	return ret;
 }
 
@@ -479,6 +492,30 @@ static int init_client(struct process *const p)
 		p->c.handle = client_pipe_handler;
 		break;
 	case IPC_MSGQ:
+		/* semaphore for the synchronization */
+		p->sem = sem_open(p->sempath, O_CREAT|O_RDWR|O_EXCL, 0600, 0);
+		if (p->sem == NULL) {
+			perror("sem_open");
+			return -1;
+		}
+		if (sem_unlink(p->sempath)) {
+			perror("sem_unlink");
+			return -1;
+		}
+		/* mqueue for the command passing */
+		p->mq = mq_open(p->mqpath, O_CREAT|O_RDWR|O_EXCL, 0600, &p->mq_attr);
+		if (p->mq == -1) {
+			perror("mq_open");
+			if (sem_close(p->sem))
+				perror("sem_close");
+			return -1;
+		}
+		if (mq_unlink(p->mqpath)) {
+			perror("mq_unlink");
+			if (sem_close(p->sem))
+				perror("sem_close");
+			return -1;
+		}
 		p->c.handle = client_mq_handler;
 		break;
 	default:
@@ -504,6 +541,16 @@ static int init(struct process *const p, int fd)
 	if (ret == -1)
 		return ret;
 	return 0;
+}
+
+static void term(const struct process *restrict p)
+{
+	if (p->mq != -1)
+		if (mq_close(p->mq))
+			perror("mq_close");
+	if (p->sem)
+		if (sem_close(p->sem))
+			perror("sem_close");
 }
 
 /* shell/internal commands and the handlers */
@@ -618,9 +665,12 @@ int main(int argc, char *const argv[])
 	print_prompt(p);
 	while ((cmd = fgets(line, sizeof(line), stdin)))
 		if ((ret = handle(&p->c, cmd)))
-			return 1;
+			goto out;
 	if (is_print_prompt(p))
 		putchar('\n');
-
+out:
+	term(p);
+	if (ret)
+		return 1;
 	return 0;
 }

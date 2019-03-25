@@ -70,9 +70,9 @@ int main(void)
 			.want	= 0,
 		},
 		{
-			.name	= "date and exit commands",
+			.name	= "date, uname -an, and exit commands",
 			.argv	= {target, NULL},
-			.cmd	= "date\nexit\n",
+			.cmd	= "date\nuname -an\nexit\n",
 			.want	= 0,
 		},
 		{
@@ -82,9 +82,9 @@ int main(void)
 			.want	= 0,
 		},
 		{
-			.name	= "date and exit commands with pipe IPC mode",
+			.name	= "date, uname -an, and exit commands with pipe IPC mode",
 			.argv	= {target, "-i", "pipe", NULL},
-			.cmd	= "date\nexit\n",
+			.cmd	= "date\nuname -an\nexit\n",
 			.want	= 0,
 		},
 		{
@@ -94,9 +94,9 @@ int main(void)
 			.want	= 0,
 		},
 		{
-			.name	= "date and exit commands with msgq IPC mode",
+			.name	= "date, uname -an, and exit commands with msgq IPC mode",
 			.argv	= {target, "-i", "msgq", NULL},
-			.cmd	= "date\nexit\n",
+			.cmd	= "date\nuname -an\nexit\n",
 			.want	= 0,
 		},
 		{
