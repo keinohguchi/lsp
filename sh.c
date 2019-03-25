@@ -38,6 +38,7 @@ static struct process {
 	const char		*const shmpath;
 	mqd_t			mq;
 	struct mq_attr		mq_attr;
+	pid_t			mq_pid;
 	sem_t			*sem;
 	int			shm;
 	off_t			shmsize;
@@ -60,6 +61,7 @@ static struct process {
 		.mq_msgsize	= LINE_MAX,
 		.mq_curmsgs	= 0,
 	},
+	.mq_pid		= -1,
 	.sem		= NULL,
 	.shm		= -1,
 	.delim		= " \t\n",
@@ -353,105 +355,114 @@ err:
 
 static int mq_server(const struct process *restrict p)
 {
-	struct message *msg = NULL;
-	FILE *file = NULL;
 	char *ptr, buf[LINE_MAX];
 	size_t len, total, remain;
+	struct message *msg;
+	FILE *file;
 	int ret, status;
 	pid_t pid;
 	int out[2];
 
-	ret = mq_receive(p->mq, buf, sizeof(buf), NULL);
-	if (ret == -1) {
-		perror("mq_receive");
-		goto out;
-	}
-	ret = pipe(out);
-	if (ret == -1) {
-		perror("pipe");
-		goto out;
-	}
-	pid = fork();
-	if (pid == -1) {
-		perror("fork");
-		goto out;
-	} else if (pid == 0) {
-		char *argv[ARG_MAX] = {NULL};
-		char *save, *start = buf;
-		int i, ret;
+	while (1) {
+		file = NULL;
+		msg = NULL;
+		ret = mq_receive(p->mq, buf, sizeof(buf), NULL);
+		if (ret == -1) {
+			perror("mq_receive");
+			break;
+		}
+		ret = pipe(out);
+		if (ret == -1) {
+			perror("pipe");
+			break;
+		}
+		pid = fork();
+		if (pid == -1) {
+			perror("fork");
+			break;
+		} else if (pid == 0) {
+			char *argv[ARG_MAX] = {NULL};
+			char *save, *start = buf;
+			int i, ret;
 
-		if (close(out[0])) {
+			if (close(out[0])) {
+				perror("close");
+				exit(EXIT_FAILURE);
+			}
+			ret = dup2(out[1], STDOUT_FILENO);
+			if (ret == -1) {
+				perror("dup2");
+				exit(EXIT_FAILURE);
+			}
+			for (i = 0; i < LINE_MAX; i++) {
+				argv[i] = strtok_r(start, p->delim, &save);
+				if (argv[i] == NULL)
+					break;
+				start = NULL;
+			}
+			ret = execvp(argv[0], argv);
+			if (ret == -1) {
+				perror("execvp");
+				exit(EXIT_FAILURE);
+			}
+			/* not reached */
+		}
+		ret = close(out[1]);
+		if (ret == -1) {
 			perror("close");
-			exit(EXIT_FAILURE);
+			break;
 		}
-		ret = dup2(out[1], STDOUT_FILENO);
+		file = fdopen(out[0], "r");
+		if (file == NULL) {
+			perror("fdopen");
+			break;
+		}
+		msg = mmap(NULL, p->shmsize, PROT_WRITE, MAP_SHARED, p->shm, 0);
+		if (msg == NULL) {
+			perror("mmap");
+			break;
+		}
+		remain = p->shmsize-sizeof(msg->len);
+		total = msg->len = 0;
+		ptr = (char *)msg->data;
+		while ((len = fread(ptr, 1, remain, file))) {
+			remain -= len;
+			total += len;
+			ptr += len;
+		}
+		if (ferror(file)) {
+			perror("fread");
+			ret = -1;
+			break;
+		}
+		msg->len = total;
+		ret = sem_post(p->sem);
 		if (ret == -1) {
-			perror("dup2");
-			exit(EXIT_FAILURE);
+			perror("sem_post");
+			break;
 		}
-		for (i = 0; i < LINE_MAX; i++) {
-			argv[i] = strtok_r(start, p->delim, &save);
-			if (argv[i] == NULL)
-				break;
-			start = NULL;
-		}
-		ret = execvp(argv[0], argv);
+		ret = waitpid(pid, &status, 0);
 		if (ret == -1) {
-			perror("execvp");
-			exit(EXIT_FAILURE);
+			perror("waitpid");
+			break;
 		}
-		/* not reached */
-	}
-	ret = close(out[1]);
-	if (ret == -1) {
-		perror("close");
-		goto out;
-	}
-	file = fdopen(out[0], "r");
-	if (file == NULL) {
-		perror("fdopen");
-		goto out;
-	}
-	msg = mmap(NULL, p->shmsize, PROT_WRITE, MAP_SHARED, p->shm, 0);
-	if (msg == NULL) {
-		perror("mmap");
-		goto out;
-	}
-	remain = p->shmsize-sizeof(msg->len);
-	total = msg->len = 0;
-	ptr = (char *)msg->data;
-	while ((len = fread(ptr, 1, remain, file))) {
-	       remain -= len;
-	       total += len;
-	       ptr += len;
-	}
-	if (ferror(file)) {
-		perror("fread");
 		ret = -1;
-		goto out;
+		if (WIFSIGNALED(status)) {
+			fprintf(stderr, "child exit with signal(%s)\n",
+				strsignal(WTERMSIG(status)));
+			break;
+		}
+		if (!WIFEXITED(status)) {
+			fprintf(stderr, "child does not exit\n");
+			break;
+		}
+		ret = WEXITSTATUS(status);
+		if (ret != 0) {
+			fprintf(stderr, "child exit with error status(%d)\n",
+				WEXITSTATUS(status));
+			/* ignore the error */
+		}
 	}
-	msg->len = total;
-	ret = sem_post(p->sem);
-	if (ret == -1) {
-		perror("sem_post");
-		goto out;
-	}
-	ret = waitpid(pid, &status, 0);
-	if (ret == -1) {
-		perror("waitpid");
-		goto out;
-	}
-	if (WIFSIGNALED(status)) {
-		fprintf(stderr, "child exit with signal(%s)\n",
-			strsignal(WTERMSIG(status)));
-		goto out;
-	}
-	if (!WIFEXITED(status)) {
-		fprintf(stderr, "child does not exit\n");
-		goto out;
-	}
-	ret = WEXITSTATUS(status);
-out:
 	if (msg)
 		if (munmap(msg, p->shmsize))
 		    perror("munmap");
@@ -469,28 +480,16 @@ static int mq_handler(const struct process *restrict p, char *const argv[])
 {
 	struct message *msg = NULL;
 	char *ptr, buf[LINE_MAX];
-	int len = sizeof(buf);
-	int ret, status;
+	size_t len = sizeof(buf);
 	size_t n, remain;
-	pid_t pid;
-	int i;
+	int i, ret;
 
-	pid = fork();
-	if (pid == -1) {
-		perror("fork");
-		return -1;
-	} else if (pid == 0) {
-		ret = mq_server(p);
-		if (ret)
-			exit(EXIT_FAILURE);
-		exit(EXIT_SUCCESS);
-	}
 	ptr = buf;
 	for (i = 0; argv[i]; i++) {
 		ret = snprintf(ptr, len, "%s ", argv[i]);
 		if (ret < 0) {
 			perror("snprintf");
-			goto err;
+			goto out;
 		}
 		ptr += ret;
 		len -= ret;
@@ -499,48 +498,28 @@ static int mq_handler(const struct process *restrict p, char *const argv[])
 	ret = mq_send(p->mq, buf, strlen(buf)+1, 0); /* null terminater */
 	if (ret == -1) {
 		perror("mq_send");
-		goto err;
+		goto out;
 	}
 	ret = sem_wait(p->sem);
 	if (ret == -1) {
 		perror("sem_wait");
-		goto err;
+		goto out;
 	}
 	msg = mmap(NULL, p->shmsize, PROT_READ, MAP_SHARED, p->shm, 0);
 	if (msg == NULL) {
 		perror("mmap");
-		goto err;
+		ret = -1;
+		goto out;
 	}
 	ptr = msg->data;
 	for (remain = msg->len; remain > 0; remain -= n) {
 		n = write(STDOUT_FILENO, ptr, remain);
 		if (n == -1) {
 			perror("write");
-			break;
+			ret = -1;
+			goto out;
 		}
 	}
-	ret = munmap(msg, p->shmsize);
-	if (ret == -1) {
-		perror("munmap");
-		goto err;
-	}
-err:
-	ret = waitpid(pid, &status, 0);
-	if (ret == -1) {
-		perror("waitpid");
-		goto out;
-	}
-	ret = -1;
-	if (WIFSIGNALED(status)) {
-		fprintf(stderr, "child exit with signal(%s)\n",
-			strsignal(WTERMSIG(status)));
-		goto out;
-	}
-	if (!WIFEXITED(status)) {
-		fprintf(stderr, "child did not exit\n");
-		goto out;
-	}
-	ret = 0;
 out:
 	if (msg)
 		if (munmap(msg, sizeof(u_int32_t)))
@@ -550,6 +529,7 @@ out:
 
 static int init_mq_handler(struct process *const p)
 {
+	pid_t pid;
 	int ret;
 
 	/* semaphore for the synchronization */
@@ -598,6 +578,16 @@ static int init_mq_handler(struct process *const p)
 	if (ret == -1) {
 		perror("ftruncate");
 		goto err;
+	}
+	pid = fork();
+	if (pid == -1) {
+		perror("fork");
+		goto err;
+	} else if (pid == 0) {
+		ret = mq_server(p);
+		if (ret == -1)
+			exit(EXIT_FAILURE);
+		exit(EXIT_SUCCESS);
 	}
 	p->handle = mq_handler;
 	return 0;
@@ -662,6 +652,8 @@ static int init(struct process *const p, int fd)
 
 static void term(const struct process *restrict p)
 {
+	int ret, status;
+
 	if (p->shm != -1)
 		if (close(p->shm))
 			perror("close");
@@ -671,6 +663,24 @@ static void term(const struct process *restrict p)
 	if (p->sem)
 		if (sem_close(p->sem))
 			perror("sem_close");
+	if (p->mq_pid == -1)
+		return;
+
+	/* wait for the server to terminate */
+	ret = waitpid(p->mq_pid, &status, 0);
+	if (ret == -1) {
+		perror("waitpid");
+		return;
+	}
+	if (WIFSIGNALED(status)) {
+		fprintf(stderr, "child exit with signal(%s)\n",
+			strsignal(WTERMSIG(status)));
+		return;
+	}
+	if (!WIFEXITED(status)) {
+		fprintf(stderr, "child does not exit\n");
+		return;
+	}
 }
 
 /* shell/internal commands and the handlers */
