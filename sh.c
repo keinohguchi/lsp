@@ -482,6 +482,44 @@ out:
 	return ret;
 }
 
+static int init_mq_client(struct process *const p)
+{
+	int ret;
+
+	/* semaphore for the synchronization */
+	p->sem = sem_open(p->sempath, O_CREAT|O_RDWR|O_EXCL, 0600, 0);
+	if (p->sem == NULL) {
+		perror("sem_open");
+		return -1;
+	}
+	ret = sem_unlink(p->sempath);
+	if (ret == -1) {
+		perror("sem_unlink");
+		goto err;
+	}
+	/* mqueue for the command passing */
+	ret = -1;
+	p->mq = mq_open(p->mqpath, O_CREAT|O_RDWR|O_EXCL, 0600, &p->mq_attr);
+	if (p->mq == -1) {
+		perror("mq_open");
+		goto err;
+	}
+	ret = mq_unlink(p->mqpath);
+	if (ret == -1) {
+		perror("mq_unlink");
+		goto err;
+	}
+	p->c.handle = client_mq_handler;
+	return 0;
+err:
+	if (p->mq)
+		if (mq_close(p->mq))
+			perror("mq_close");
+	if (sem_close(p->sem))
+		perror("sem_close");
+	return ret;
+}
+
 static int init_client(struct process *const p)
 {
 	switch (p->ipc) {
@@ -492,31 +530,8 @@ static int init_client(struct process *const p)
 		p->c.handle = client_pipe_handler;
 		break;
 	case IPC_MSGQ:
-		/* semaphore for the synchronization */
-		p->sem = sem_open(p->sempath, O_CREAT|O_RDWR|O_EXCL, 0600, 0);
-		if (p->sem == NULL) {
-			perror("sem_open");
+		if (init_mq_client(p) == -1)
 			return -1;
-		}
-		if (sem_unlink(p->sempath)) {
-			perror("sem_unlink");
-			return -1;
-		}
-		/* mqueue for the command passing */
-		p->mq = mq_open(p->mqpath, O_CREAT|O_RDWR|O_EXCL, 0600, &p->mq_attr);
-		if (p->mq == -1) {
-			perror("mq_open");
-			if (sem_close(p->sem))
-				perror("sem_close");
-			return -1;
-		}
-		if (mq_unlink(p->mqpath)) {
-			perror("mq_unlink");
-			if (sem_close(p->sem))
-				perror("sem_close");
-			return -1;
-		}
-		p->c.handle = client_mq_handler;
 		break;
 	default:
 		fprintf(stderr, "unknown ipc type: %d\n", p->ipc);
