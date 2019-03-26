@@ -195,10 +195,12 @@ static void print_prompt(const struct process *const p)
 		printf("%s$ ", p->prompt);
 }
 
+static void term(const struct process *restrict p);
+
 static int exit_handler(int argc, char *const argv[])
 {
+	term(&process);
 	exit(EXIT_SUCCESS);
-	return 0;
 }
 
 static int version_handler(int argc, char *const argv[])
@@ -606,6 +608,7 @@ static int init_mq_handler(struct process *const p)
 			exit(EXIT_FAILURE);
 		exit(EXIT_SUCCESS);
 	}
+	p->mq_pid = pid;
 	p->handle = mq_handler;
 	return 0;
 err:
@@ -683,19 +686,15 @@ static void term(const struct process *restrict p)
 	if (p->mq_pid == -1)
 		return;
 
-	/* wait for the server to terminate */
+	/* kill the command server */
+	ret = kill(p->mq_pid, SIGTERM);
+	if (ret == -1) {
+		perror("kill");
+		return;
+	}
 	ret = waitpid(p->mq_pid, &status, 0);
 	if (ret == -1) {
 		perror("waitpid");
-		return;
-	}
-	if (WIFSIGNALED(status)) {
-		fprintf(stderr, "child exit with signal(%s)\n",
-			strsignal(WTERMSIG(status)));
-		return;
-	}
-	if (!WIFEXITED(status)) {
-		fprintf(stderr, "child does not exit\n");
 		return;
 	}
 }
