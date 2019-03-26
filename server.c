@@ -98,6 +98,278 @@ static void usage(const struct process *restrict p, FILE *stream, int status)
 	exit(status);
 }
 
+static void server_timeout_action(int signo, siginfo_t *si, void *tcontext)
+{
+	if (signo != SIGALRM)
+		return;
+	printf("server[%d]: timedout\n", getpid());
+	exit(EXIT_SUCCESS);
+}
+
+static int init_server_signal(const struct process *restrict p)
+{
+	struct sigaction sa = {
+		.sa_flags	= SA_SIGINFO,
+		.sa_sigaction	= server_timeout_action,
+	};
+	int ret;
+
+	/* nothing to do in case of no timeout */
+	if (p->timeout == -1)
+		return 0;
+
+	/* for SIGALRM */
+	ret = sigemptyset(&sa.sa_mask);
+	if (ret == -1) {
+		perror("sigemptyset");
+		return ret;
+	}
+	ret = sigaction(SIGALRM, &sa, NULL);
+	if (ret == -1) {
+		perror("sigaction(SIGALRM)");
+		return ret;
+	}
+	return 0;
+}
+
+static int init_server_timer(const struct process *restrict p)
+{
+	const struct itimerval it = {
+		.it_value = {
+			.tv_sec		= p->timeout/1000,
+			.tv_usec	= p->timeout%1000*1000,
+		},
+		.it_interval = {0, 0},
+	};
+	int ret;
+
+	/* arm the new timer */
+	ret = setitimer(ITIMER_REAL, &it, NULL);
+	if (ret == -1) {
+		perror("setitimer");
+		return -1;
+	}
+	return 0;
+}
+
+static int reset_server_timer(const struct process *restrict p)
+{
+	const struct itimerval zero = {
+		.it_value	= {0, 0},
+		.it_interval	= {0, 0},
+	};
+	sigset_t mask;
+	int ret;
+
+	if (!p->timeout)
+		return 1;
+
+	ret = sigemptyset(&mask);
+	if (ret == -1) {
+		perror("sigemptymask");
+		return -1;
+	}
+	ret = sigaddset(&mask, SIGALRM);
+	if (ret == -1) {
+		perror("sigaddset");
+		return -1;
+	}
+	ret = sigprocmask(SIG_BLOCK, &mask, NULL);
+	if (ret == -1) {
+		perror("sigprocmask");
+		return -1;
+	}
+	/* reset the timer */
+	ret = setitimer(ITIMER_REAL, &zero, NULL);
+	if (ret == -1) {
+		perror("setitimer");
+		/* ignore the error */
+	}
+	init_server_timer(p);
+	ret = sigprocmask(SIG_UNBLOCK, &mask, NULL);
+	if (ret == -1) {
+		perror("sigprocmask");
+		return -1;
+	}
+	return 0;
+}
+
+static int init_server_socket(struct server *ctx)
+{
+	const struct process *const p = ctx->p;
+	struct sockaddr_in sin;
+	int sd, ret, opt;
+
+	sd = socket(p->family, p->type, p->proto);
+	if (sd == -1) {
+		perror("socket");
+		ret = -1;
+		goto err;
+	}
+	opt = 1;
+	ret = setsockopt(sd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
+	if (ret == -1) {
+		perror("setsockopt(SO_REUSEPORT)");
+		goto err;
+	}
+	sin.sin_family = p->family;
+	sin.sin_addr.s_addr = 0;
+	sin.sin_port = htons(p->port);
+	ret = bind(sd, (struct sockaddr *)&sin, sizeof(sin));
+	if (ret == -1) {
+		perror("bind");
+		goto err;
+	}
+	ret = listen(sd, p->backlog);
+	if (ret == -1) {
+		perror("listen");
+		goto err;
+	}
+	ctx->sd = sd;
+	return 0;
+err:
+	if (sd != -1)
+		if (close(sd))
+			ret = -1;
+	return ret;
+}
+
+static void dump(FILE *s, const unsigned char *restrict buf, size_t len)
+{
+	int i, j, width = 16;
+
+	for (i = 0; i < len; i++) {
+		fprintf(s, "%02x ", buf[i]);
+		/* check if we are done for this line */
+		if (i%width == (width-1) || i+1 == len) {
+			/* fill the gap */
+			for (j = (i%width); j < (width-1); j++)
+				fprintf(s, "   ");
+			/* ascii print */
+			fprintf(s, "| ");
+			for (j = i-(i%width); j <= i; j++)
+				fprintf(s, "%c", isprint(buf[j]) ? buf[j] : '.');
+			fprintf(s, "\n");
+		}
+	}
+}
+
+static void *server(void *arg)
+{
+	struct server *ctx = arg;
+	const struct process *const p = ctx->p;
+	socklen_t slen = sizeof(struct sockaddr_in);
+	struct sockaddr_in sin;
+	char *client, addr[INET_ADDRSTRLEN];
+	char buf[BUFSIZ];
+	ssize_t len;
+	int ret;
+
+	ret = init_server_signal(p);
+	if (ret == -1)
+		return (void *)EXIT_FAILURE;
+	ret = init_server_timer(p);
+	if (ret == -1)
+		return (void *)EXIT_FAILURE;
+	ret = init_server_socket(ctx);
+	if (ret == -1)
+		return (void *)EXIT_FAILURE;
+	for (;;) {
+		int c = accept(ctx->sd, &sin, &slen);
+		if (c == -1) {
+			perror("accept");
+			continue;
+		}
+		client = (char *)inet_ntop(p->family, &sin.sin_addr, addr, sizeof(addr));
+		if (client == NULL)
+			ret = snprintf(buf, sizeof(buf), "Hello, Client\n");
+		else
+			ret = snprintf(buf, sizeof(buf), "Hello, %s:%d\n",
+				       client, ntohs(sin.sin_port));
+		if (ret < 0) {
+			perror("snprintf");
+			if (shutdown(c, SHUT_RDWR))
+				perror("shutdown");
+			continue;
+		}
+		len = send(c, buf, strlen(buf)+1, 0); /* +null */
+		if (len == -1) {
+			perror("send");
+			if (shutdown(c, SHUT_RD))
+				perror("shutdown");
+			continue;
+		}
+again:
+		len = recv(c, buf, sizeof(buf), 0);
+		if (len == -1) {
+			perror("recv");
+			if (shutdown(c, SHUT_RDWR))
+				perror("shutdown");
+			continue;
+		} else if (len == 0) {
+			if (shutdown(c, SHUT_RDWR))
+				perror("shutdown");
+			continue;
+		}
+		reset_server_timer(p);
+		dump(p->output, (unsigned char *)buf, len);
+		len = send(c, buf, len, 0);
+		if (len == -1) {
+			perror("write");
+			if (shutdown(c, SHUT_RDWR))
+				perror("shutdown");
+			continue;
+		}
+		goto again;
+	}
+	return NULL;
+}
+
+static int init_server(struct process *p)
+{
+	struct server *ss, *s;
+	int i, j, ret, *retp;
+
+	ss = calloc(p->concurrent, sizeof(struct server));
+	if (ss == NULL) {
+		perror("calloc");
+		return -1;
+	}
+	s = p->ss = ss;
+	for (i = 0; i < p->concurrent; i++) {
+		s->sd = -1;
+		s->p = p;
+		s->pid = fork();
+		if (s->pid == -1) {
+			perror("fork");
+			goto err;
+		} else if (s->pid == 0) {
+			retp = server(s);
+			if (retp != NULL)
+				exit(EXIT_FAILURE);
+			exit(EXIT_SUCCESS);
+		}
+		s++;
+	}
+	return 0;
+err:
+	for (j = 0, s = ss; j < i; j++, s++) {
+		const union sigval val = {.sival_int = getpid()};
+		int status;
+		if (s->pid == -1)
+			continue;
+		ret = sigqueue(s->pid, SIGTERM, val);
+		if (ret == -1) {
+			perror("sigqueue");
+			continue;
+		}
+		ret = waitpid(s->pid, &status, 0);
+		if (ret == -1)
+			perror("waitpid");
+	}
+	return -1;
+}
+
 static int init_daemon(const struct process *restrict p)
 {
 	int i, ret, fd = -1;
@@ -151,283 +423,72 @@ err:
 	return ret;
 }
 
-static void term(const struct process *restrict p);
-
-static void timeout_action(int signo, siginfo_t *si, void *tcontext)
+static void child_action(int signo, siginfo_t *si, void *context)
 {
-	const struct process *const p = &process;
-	if (signo != SIGALRM)
+	struct process *p = &process;
+	struct server *s;
+	int ret, status;
+	int i, count = 0;
+
+	printf("server[%d]: signal %s\n", si->si_pid, strsignal(signo));
+	if (signo != SIGCHLD)
 		return;
-	term(p);
-	exit(EXIT_SUCCESS);
+	ret = waitpid(si->si_pid, &status, 0);
+	if (ret == -1) {
+		perror("waitpid");
+		return;
+	}
+	/* we need to take care of other childs, as the standard signals,
+	 * including SIGCHLD, won't be queued and might be dropped while
+	 * hanling here. */
+	for (i = 0, s = p->ss; i < p->concurrent && s; i++, s++) {
+		if (s->pid == -1)
+			continue;
+		else if (s->pid == si->si_pid) {
+			/* taken care of it in above */
+			s->pid = -1;
+			continue;
+		}
+		ret = waitpid(s->pid, &status, WNOHANG);
+		if (ret == -1) {
+			perror("waitpid");
+			continue;
+		}
+		/* just reset the pid for now */
+		s->pid = -1;
+	}
+	/* no more child, just exit for now. */
+	if (count == 0)
+		exit(EXIT_SUCCESS);
 }
 
 static int init_signal(const struct process *restrict p)
 {
-	struct sigaction sa = {
+	const struct sigaction sa = {
 		.sa_flags	= SA_SIGINFO,
-		.sa_sigaction	= timeout_action,
+		.sa_sigaction	= child_action,
 	};
 	int ret;
 
-	/* nothing to do in case of no timeout */
-	if (p->timeout == -1)
-		return 0;
-
-	/* for SIGALRM */
-	ret = sigemptyset(&sa.sa_mask);
+	ret = sigaction(SIGCHLD, &sa, NULL);
 	if (ret == -1) {
-		perror("sigemptyset");
-		return ret;
-	}
-	ret = sigaction(SIGALRM, &sa, NULL);
-	if (ret == -1) {
-		perror("sigaction(SIGALRM)");
-		return ret;
-	}
-	return 0;
-}
-
-static int init_timer(const struct process *restrict p)
-{
-	const struct itimerval it = {
-		.it_value = {
-			.tv_sec		= p->timeout/1000,
-			.tv_usec	= p->timeout%1000*1000,
-		},
-		.it_interval = {0, 0},
-	};
-	int ret;
-
-	/* arm the new timer */
-	ret = setitimer(ITIMER_REAL, &it, NULL);
-	if (ret == -1) {
-		perror("setitimer");
+		perror("sigaction(SIGCHLD)");
 		return -1;
 	}
 	return 0;
 }
 
-static int reset_timer(const struct process *restrict p)
-{
-	const struct itimerval zero = {
-		.it_value	= {0, 0},
-		.it_interval	= {0, 0},
-	};
-	sigset_t mask;
-	int ret;
-
-	if (!p->timeout)
-		return 1;
-
-	ret = sigemptyset(&mask);
-	if (ret == -1) {
-		perror("sigemptymask");
-		return -1;
-	}
-	ret = sigaddset(&mask, SIGALRM);
-	if (ret == -1) {
-		perror("sigaddset");
-		return -1;
-	}
-	ret = sigprocmask(SIG_BLOCK, &mask, NULL);
-	if (ret == -1) {
-		perror("sigprocmask");
-		return -1;
-	}
-	/* reset the timer */
-	ret = setitimer(ITIMER_REAL, &zero, NULL);
-	if (ret == -1) {
-		perror("setitimer");
-		/* ignore the error */
-	}
-	init_timer(p);
-	ret = sigprocmask(SIG_UNBLOCK, &mask, NULL);
-	if (ret == -1) {
-		perror("sigprocmask");
-		return -1;
-	}
-	return 0;
-}
-
-static int init_socket(struct server *ctx)
-{
-	const struct process *const p = ctx->p;
-	struct sockaddr_in sin;
-	int sd, ret, opt;
-
-	sd = socket(p->family, p->type, p->proto);
-	if (sd == -1) {
-		perror("socket");
-		ret = -1;
-		goto err;
-	}
-	opt = 1;
-	ret = setsockopt(sd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
-	if (ret == -1) {
-		perror("setsockopt(SO_REUSEPORT)");
-		goto err;
-	}
-	sin.sin_family = p->family;
-	sin.sin_addr.s_addr = 0;
-	sin.sin_port = htons(p->port);
-	ret = bind(sd, (struct sockaddr *)&sin, sizeof(sin));
-	if (ret == -1) {
-		perror("bind");
-		goto err;
-	}
-	ret = listen(sd, p->backlog);
-	if (ret == -1) {
-		perror("listen");
-		goto err;
-	}
-	return sd;
-err:
-	if (sd != -1)
-		if (close(sd))
-			ret = -1;
-	return ret;
-}
-
-static void dump(FILE *s, const unsigned char *restrict buf, size_t len)
-{
-	int i, j, width = 16;
-
-	for (i = 0; i < len; i++) {
-		fprintf(s, "%02x ", buf[i]);
-		/* check if we are done for this line */
-		if (i%width == (width-1) || i+1 == len) {
-			/* fill the gap */
-			for (j = (i%width); j < (width-1); j++)
-				fprintf(s, "   ");
-			/* ascii print */
-			fprintf(s, "| ");
-			for (j = i-(i%width); j <= i; j++)
-				fprintf(s, "%c", isprint(buf[j]) ? buf[j] : '.');
-			fprintf(s, "\n");
-		}
-	}
-}
-
-static void *server(void *arg)
-{
-	struct server *ctx = arg;
-	const struct process *const p = ctx->p;
-	socklen_t slen = sizeof(struct sockaddr_in);
-	struct sockaddr_in sin;
-	char buf[BUFSIZ];
-	ssize_t len;
-	int ret;
-
-	ret = init_socket(ctx);
-	if (ret == -1)
-		return (void *)EXIT_FAILURE;
-	ctx->sd = ret;
-	for (;;) {
-		int c = accept(ctx->sd, &sin, &slen);
-		if (c == -1) {
-			perror("accept");
-			continue;
-		}
-		ret = snprintf(buf, sizeof(buf), "Hello world\n");
-		if (ret < 0) {
-			perror("snprintf");
-			if (shutdown(c, SHUT_RDWR))
-				perror("shutdown");
-			continue;
-		}
-		len = send(c, buf, strlen(buf)+1, 0); /* +null */
-		if (len == -1) {
-			perror("send");
-			if (shutdown(c, SHUT_RD))
-				perror("shutdown");
-			continue;
-		}
-again:
-		len = recv(c, buf, sizeof(buf), 0);
-		if (len == -1) {
-			perror("recv");
-			if (shutdown(c, SHUT_RDWR))
-				perror("shutdown");
-			continue;
-		} else if (len == 0) {
-			if (shutdown(c, SHUT_RDWR))
-				perror("shutdown");
-			continue;
-		}
-		reset_timer(p);
-		dump(p->output, (unsigned char *)buf, len);
-		len = send(c, buf, len, 0);
-		if (len == -1) {
-			perror("write");
-			if (shutdown(c, SHUT_RDWR))
-				perror("shutdown");
-			continue;
-		}
-		goto again;
-	}
-	return NULL;
-}
-
-static int init_server(const struct process *restrict p)
-{
-	struct server *ss, *s;
-	int i, j, ret, *retp;
-
-	ss = calloc(p->concurrent, sizeof(struct server));
-	if (ss == NULL) {
-		perror("calloc");
-		return -1;
-	}
-	s = ss;
-	for (i = 0; i < p->concurrent; i++) {
-		s->sd = -1;
-		s->p = p;
-		s->pid = fork();
-		if (s->pid == -1) {
-			perror("fork");
-			goto err;
-		} else if (s->pid == 0) {
-			retp = server(s);
-			if (retp != NULL)
-				exit(EXIT_FAILURE);
-			exit(EXIT_SUCCESS);
-		}
-		s++;
-	}
-	return 0;
-err:
-	for (j = 0, s = ss; j < i; j++, s++) {
-		const union sigval val = {.sival_int = getpid()};
-		int status;
-		if (s->pid == -1)
-			continue;
-		ret = sigqueue(s->pid, SIGTERM, val);
-		if (ret == -1) {
-			perror("sigqueue");
-			continue;
-		}
-		ret = waitpid(s->pid, &status, 0);
-		if (ret == -1)
-			perror("waitpid");
-	}
-	return -1;
-}
-
-static int init(const struct process *restrict p)
+static int init(struct process *p)
 {
 	int ret;
 
-	ret = init_daemon(p);
+	ret = init_signal(p);
 	if (ret == -1)
 		return ret;
 	ret = init_server(p);
 	if (ret == -1)
 		return ret;
-	ret = init_signal(p);
-	if (ret == -1)
-		return ret;
-	return init_timer(p);
+	return init_daemon(p);
 }
 
 static void term(const struct process *const p)
@@ -436,7 +497,9 @@ static void term(const struct process *const p)
 	struct server *s;
 	int i, ret, status;
 
-	for (i = 0, s = p->ss; i < p->concurrent && s; i++, s++) {
+	if (p->ss == NULL)
+		return;
+	for (i = 0, s = p->ss; i < p->concurrent; i++, s++) {
 		if (s->pid == -1)
 			continue;
 		ret = sigqueue(s->pid, SIGTERM, val);
@@ -448,6 +511,7 @@ static void term(const struct process *const p)
 		if (ret == -1)
 			perror("waitpid");
 	}
+	free(p->ss);
 }
 
 int main(int argc, char *const argv[])
@@ -493,7 +557,10 @@ int main(int argc, char *const argv[])
 	ret = init(p);
 	if (ret == -1)
 		goto out;
-	pause();
+
+	/* inifinite loop for now */
+	while (1)
+		pause();
 out:
 	term(p);
 	if (ret)
