@@ -21,27 +21,27 @@ int main(void)
 			.want		= 0,
 		},
 		{
-			.name		= "single thread 1msec timeout ",
+			.name		= "single worker 1msec timeout ",
 			.argv		= {target, "-t", "1", NULL},
 			.want		= 0,
 		},
 		{
-			.name		= "single thread 100 listening backlog",
+			.name		= "single worker 100 listening backlog",
 			.argv		= {target, "-b", "100", "-t", "1", NULL},
 			.want		= 0,
 		},
 		{
-			.name		= "multi thread 1msec timeout ",
+			.name		= "multi worker 1msec timeout ",
 			.argv		= {target, "-c", "2", "-t", "1", NULL},
 			.want		= 0,
 		},
 		{
-			.name		= "multi thread 100 listening backlog",
+			.name		= "multi worker 100 listening backlog",
 			.argv		= {target, "-c", "2", "-b", "100", "-t", "1", NULL},
 			.want		= 0,
 		},
 		{
-			.name		= "multi thread 1000 listening backlog",
+			.name		= "multi worker 1000 listening backlog",
 			.argv		= {target, "-c", "2", "-b", "1000", "-t", "1", NULL},
 			.want		= 0,
 		},

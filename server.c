@@ -151,10 +151,14 @@ err:
 	return ret;
 }
 
+static void term(const struct process *restrict p);
+
 static void timeout_action(int signo, siginfo_t *si, void *tcontext)
 {
+	const struct process *const p = &process;
 	if (signo != SIGALRM)
 		return;
+	term(p);
 	exit(EXIT_SUCCESS);
 }
 
@@ -311,7 +315,7 @@ static void *server(void *arg)
 	const struct process *const p = ctx->p;
 	socklen_t slen = sizeof(struct sockaddr_in);
 	struct sockaddr_in sin;
-	unsigned char buf[BUFSIZ];
+	char buf[BUFSIZ];
 	ssize_t len;
 	int ret;
 
@@ -323,6 +327,20 @@ static void *server(void *arg)
 		int c = accept(ctx->sd, &sin, &slen);
 		if (c == -1) {
 			perror("accept");
+			continue;
+		}
+		ret = snprintf(buf, sizeof(buf), "Hello world\n");
+		if (ret < 0) {
+			perror("snprintf");
+			if (shutdown(c, SHUT_RDWR))
+				perror("shutdown");
+			continue;
+		}
+		len = send(c, buf, strlen(buf)+1, 0); /* +null */
+		if (len == -1) {
+			perror("send");
+			if (shutdown(c, SHUT_RD))
+				perror("shutdown");
 			continue;
 		}
 again:
@@ -338,7 +356,7 @@ again:
 			continue;
 		}
 		reset_timer(p);
-		dump(p->output, buf, len);
+		dump(p->output, (unsigned char *)buf, len);
 		len = send(c, buf, len, 0);
 		if (len == -1) {
 			perror("write");
@@ -373,6 +391,7 @@ static int init_server(const struct process *restrict p)
 			retp = server(s);
 			if (retp != NULL)
 				exit(EXIT_FAILURE);
+			exit(EXIT_SUCCESS);
 		}
 		s++;
 	}
@@ -402,13 +421,13 @@ static int init(const struct process *restrict p)
 	ret = init_daemon(p);
 	if (ret == -1)
 		return ret;
+	ret = init_server(p);
+	if (ret == -1)
+		return ret;
 	ret = init_signal(p);
 	if (ret == -1)
 		return ret;
-	ret = init_timer(p);
-	if (ret == -1)
-		return ret;
-	return init_server(p);
+	return init_timer(p);
 }
 
 static void term(const struct process *const p)
@@ -417,7 +436,7 @@ static void term(const struct process *const p)
 	struct server *s;
 	int i, ret, status;
 
-	for (i = 0, s = p->ss; i < p->concurrent; i++, s++) {
+	for (i = 0, s = p->ss; i < p->concurrent && s; i++, s++) {
 		if (s->pid == -1)
 			continue;
 		ret = sigqueue(s->pid, SIGTERM, val);
