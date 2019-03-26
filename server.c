@@ -9,10 +9,10 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <unistd.h>
-#include <pthread.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <sys/wait.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -23,7 +23,7 @@
 
 struct server {
 	const struct process	*p;
-	pthread_t		tid;
+	pid_t			pid;
 	int			sd;
 };
 
@@ -348,13 +348,13 @@ again:
 		}
 		goto again;
 	}
-	return (void *)EXIT_SUCCESS;
+	return NULL;
 }
 
 static int init_server(const struct process *restrict p)
 {
 	struct server *ss, *s;
-	int i, j, ret;
+	int i, j, ret, *retp;
 
 	ss = calloc(p->concurrent, sizeof(struct server));
 	if (ss == NULL) {
@@ -365,21 +365,32 @@ static int init_server(const struct process *restrict p)
 	for (i = 0; i < p->concurrent; i++) {
 		s->sd = -1;
 		s->p = p;
-		ret = pthread_create(&s->tid, NULL, server, s);
-		if (ret) {
-			errno = ret;
-			perror("pthread_create");
+		s->pid = fork();
+		if (s->pid == -1) {
+			perror("fork");
 			goto err;
+		} else if (s->pid == 0) {
+			retp = server(s);
+			if (retp != NULL)
+				exit(EXIT_FAILURE);
 		}
 		s++;
 	}
 	return 0;
 err:
-	s = ss;
-	for (j = 0; j < i; j++) {
-		if (pthread_cancel(s->tid))
-			perror("pthread_cancel");
-		s++;
+	for (j = 0, s = ss; j < i; j++, s++) {
+		const union sigval val = {.sival_int = getpid()};
+		int status;
+		if (s->pid == -1)
+			continue;
+		ret = sigqueue(s->pid, SIGTERM, val);
+		if (ret == -1) {
+			perror("sigqueue");
+			continue;
+		}
+		ret = waitpid(s->pid, &status, 0);
+		if (ret == -1)
+			perror("waitpid");
 	}
 	return -1;
 }
@@ -402,14 +413,22 @@ static int init(const struct process *restrict p)
 
 static void term(const struct process *const p)
 {
+	const union sigval val = {.sival_int = getpid()};
 	struct server *s;
-	int i, ret;
+	int i, ret, status;
 
-	for (i = 0, s = p->ss; i < p->concurrent; i++, s++)
-		if ((ret = pthread_cancel(s->tid))) {
-			errno = ret;
-			perror("pthread_cancel");
+	for (i = 0, s = p->ss; i < p->concurrent; i++, s++) {
+		if (s->pid == -1)
+			continue;
+		ret = sigqueue(s->pid, SIGTERM, val);
+		if (ret == -1) {
+			perror("sigqueue");
+			continue;
 		}
+		ret = waitpid(s->pid, &status, 0);
+		if (ret == -1)
+			perror("waitpid");
+	}
 }
 
 int main(int argc, char *const argv[])
