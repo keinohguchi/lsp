@@ -22,13 +22,13 @@ int main(void)
 			.want	= 0,
 		},
 		{
-			.name	= "1 second timeout option",
+			.name	= "1 millisecond timeout option",
 			.argv	= {target, "-t", "1", NULL},
 			.cmd	= NULL,
 			.want	= 0,
 		},
 		{
-			.name	= "1 second timeout with prompt option",
+			.name	= "1 millisecond timeout with prompt option",
 			.argv	= {target, "-t", "1", "-p", "someprompt", NULL},
 			.cmd	= NULL,
 			.want	= 0,
