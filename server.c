@@ -205,7 +205,7 @@ static int init_timer(const struct process *restrict p)
 	struct itimerval it = {
 		.it_value = {
 			.tv_sec		= p->timeout/1000,
-			.tv_usec	= (p->timeout%1000)*1000,
+			.tv_usec	= p->timeout%1000*1000,
 		},
 		.it_interval = {0, 0},
 	};

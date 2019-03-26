@@ -129,7 +129,7 @@ static void timeout_handler(int signo)
 static int init_timer(unsigned timeout)
 {
 	const struct itimerval it = {
-		.it_value	= {timeout/1000, (timeout%1000)*1000},
+		.it_value	= {timeout/1000, timeout%1000*1000},
 		.it_interval	= {0, 0},
 	};
 	int ret;
