@@ -12,7 +12,7 @@ int main(void)
 	char *const target = realpath("./server", NULL);
 	const struct test {
 		const char	*const name;
-		char		*const argv[7];
+		char		*const argv[8];
 		int		want;
 	} *t, tests[] = {
 		{
@@ -21,28 +21,28 @@ int main(void)
 			.want		= 0,
 		},
 		{
-			.name		= "single threaded 1msec timeout ",
-			.argv		= {target, "-s", "-t", "1", NULL},
-			.want		= 0,
-		},
-		{
-			.name		= "single threaded 100 listening backlog",
-			.argv		= {target, "-s", "-b", "100", "-t", "1", NULL},
-			.want		= 0,
-		},
-		{
-			.name		= "multi threaded 1msec timeout ",
+			.name		= "single thread 1msec timeout ",
 			.argv		= {target, "-t", "1", NULL},
 			.want		= 0,
 		},
 		{
-			.name		= "multi threaded 100 listening backlog",
+			.name		= "single thread 100 listening backlog",
 			.argv		= {target, "-b", "100", "-t", "1", NULL},
 			.want		= 0,
 		},
 		{
-			.name		= "multi threaded 1000 listening backlog",
-			.argv		= {target, "-b", "1000", "-t", "1", NULL},
+			.name		= "multi thread 1msec timeout ",
+			.argv		= {target, "-c", "2", "-t", "1", NULL},
+			.want		= 0,
+		},
+		{
+			.name		= "multi thread 100 listening backlog",
+			.argv		= {target, "-c", "2", "-b", "100", "-t", "1", NULL},
+			.want		= 0,
+		},
+		{
+			.name		= "multi thread 1000 listening backlog",
+			.argv		= {target, "-c", "2", "-b", "1000", "-t", "1", NULL},
 			.want		= 0,
 		},
 		{ .name = NULL }, /* sentry */
