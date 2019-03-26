@@ -40,7 +40,7 @@ int main(void)
 			.want	= 1,
 		},
 		{
-			.name	= "no argument, orphan sleep 10 seconds",
+			.name	= "no argument, orphan sleep 10 milliseconds",
 			.argv	= {target, NULL},
 			.want	= 0,
 		},
@@ -50,17 +50,17 @@ int main(void)
 			.want	= 0,
 		},
 		{
-			.name	= "orphan sleep 2 seconds",
+			.name	= "orphan sleep 2 milliseconds",
 			.argv	= {target, "-s", "2", NULL},
 			.want	= 0,
 		},
 		{
-			.name	= "zombie mode with parent sleep 1 seconds",
+			.name	= "zombie mode with parent sleep 1 milliseconds",
 			.argv	= {target, "-m", "zombi", "-s", "1", NULL},
 			.want	= 0,
 		},
 		{
-			.name	= "normal mode with parent sleep 1 seconds",
+			.name	= "normal mode with parent sleep 1 milliseconds",
 			.argv	= {target, "-m", "normal", "-s", "1", NULL},
 			.want	= 0,
 		},

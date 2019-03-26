@@ -6,6 +6,7 @@
 #include <limits.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <sys/select.h>
 
 /* child process mode */
 enum child_mode {
@@ -17,6 +18,7 @@ enum child_mode {
 /* program context */
 static struct {
 	enum child_mode		mode;
+	int			iteration;
 	long			sleep;
 	const char		*progname;
 	const char		*const version;
@@ -24,7 +26,8 @@ static struct {
 	const struct option	lopts[];
 } ctx = {
 	.mode		= ORPHAN,
-	.sleep		= 5,
+	.iteration	= 10,
+	.sleep		= 5000,
 	.version	= "1.0.1",
 	.opts		= "m:s:vh",
 	.lopts		= {
@@ -68,6 +71,22 @@ static void usage(FILE *stream, int status)
 		}
 	}
 	exit(status);
+}
+
+static int msleep(unsigned millisecond)
+{
+	struct timeval tv = {
+		.tv_sec		= millisecond/1000,
+		.tv_usec	= millisecond%1000*1000,
+	};
+	int ret;
+
+	ret = select(0, NULL, NULL, NULL, &tv);
+	if (ret == -1) {
+		perror("select");
+		return -1;
+	}
+	return 0;
 }
 
 int main(int argc, char *const argv[])
@@ -115,22 +134,23 @@ int main(int argc, char *const argv[])
 		return 1;
 	} else if (pid == 0) {
 		/* child */
-		if (ctx.mode == ORPHAN || ctx.mode == NORMAL)
-			for (i = 0; i < ctx.sleep; i++) {
+		if (ctx.mode == ORPHAN || ctx.mode == NORMAL) {
+			for (i = 0; i < ctx.iteration; i++) {
 				printf("child[%d,ppid:%d] zzz...\n", getpid(), getppid());
 				fflush(stdout);
-				sleep(1);
+				msleep(ctx.sleep/ctx.iteration);
 			}
+		}
 		printf("child[%d,ppid:%d] goodbye\n", getpid(), getppid());
 		return 0;
 	}
 	/* let the parent die before the child */
 	switch (ctx.mode) {
 	case ZOMBIE:
-		for (i = 0; i < ctx.sleep; i++) {
+		for (i = 0; i < ctx.iteration; i++) {
 			printf("parent[%d]: zzz...\n", getpid());
 			fflush(stdout);
-			sleep(1);
+			msleep(ctx.sleep/ctx.iteration);
 		}
 		ret = 0;
 		break;
