@@ -90,7 +90,7 @@ static void usage(const struct process *restrict p, FILE *stream, int status)
 		fprintf(stream, "\t-%c,--%s:", o->val, o->name);
 		switch (o->val) {
 		case 't':
-			fprintf(stream, "\tserver timeout in millisecond (default: %us)\n",
+			fprintf(stream, "\tserver timeout in millisecond (default: %u)\n",
 				p->timeout);
 			break;
 		case 'b':
@@ -202,7 +202,7 @@ static int init_signal(const struct process *restrict p)
 
 static int init_timer(const struct process *restrict p)
 {
-	struct itimerval it = {
+	const struct itimerval it = {
 		.it_value = {
 			.tv_sec		= p->timeout/1000,
 			.tv_usec	= p->timeout%1000*1000,
@@ -222,7 +222,7 @@ static int init_timer(const struct process *restrict p)
 
 static int reset_timer(const struct process *restrict p)
 {
-	struct itimerval zero = {
+	const struct itimerval zero = {
 		.it_value	= {0, 0},
 		.it_interval	= {0, 0},
 	};

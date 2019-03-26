@@ -153,10 +153,37 @@ static void io_handler(int signo)
 		.it_value	= {0, 0},
 		.it_interval	= {0, 0},
 	};
+	sigset_t mask;
+	int ret;
+
 	if (signo != SIGIO)
 		return;
-	setitimer(ITIMER_REAL, &zero, NULL);
+	ret = sigemptyset(&mask);
+	if (ret == -1) {
+		perror("sigemptyset");
+		return;
+	}
+	ret = sigaddset(&mask, SIGALRM);
+	if (ret == -1) {
+		perror("sigaddset");
+		return;
+	}
+	ret = sigprocmask(SIG_BLOCK, &mask, NULL);
+	if (ret == -1) {
+		perror("sigprocmask");
+		return;
+	}
+	ret = setitimer(ITIMER_REAL, &zero, NULL);
+	if (ret == -1) {
+		perror("setitimer");
+		/* ignore the error */
+	}
 	init_timer(p->timeout);
+	ret = sigprocmask(SIG_UNBLOCK, &mask, NULL);
+	if (ret == -1) {
+		perror("sigprocmask");
+		return;
+	}
 }
 
 static int init_io(int fd)
