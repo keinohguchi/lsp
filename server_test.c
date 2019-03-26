@@ -21,7 +21,7 @@ int main(void)
 			.want		= 0,
 		},
 		{
-			.name		= "single threaded 1sec timeout ",
+			.name		= "single threaded 1msec timeout ",
 			.argv		= {target, "-s", "-t", "1", NULL},
 			.want		= 0,
 		},
@@ -31,7 +31,7 @@ int main(void)
 			.want		= 0,
 		},
 		{
-			.name		= "multi threaded 1sec timeout ",
+			.name		= "multi threaded 1msec timeout ",
 			.argv		= {target, "-t", "1", NULL},
 			.want		= 0,
 		},

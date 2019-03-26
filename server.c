@@ -13,6 +13,7 @@
 #include <semaphore.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -55,7 +56,7 @@ static struct process {
 	const char		*const opts;
 	const struct option	lopts[];
 } process = {
-	.timeout	= 30,
+	.timeout	= 30000,
 	.backlog	= 5,
 	.daemon		= 0,
 	.single		= 0,
@@ -89,7 +90,7 @@ static void usage(const struct process *restrict p, FILE *stream, int status)
 		fprintf(stream, "\t-%c,--%s:", o->val, o->name);
 		switch (o->val) {
 		case 't':
-			fprintf(stream, "\tserver inactivity timeout (default: %us)\n",
+			fprintf(stream, "\tserver timeout in millisecond (default: %us)\n",
 				p->timeout);
 			break;
 		case 'b':
@@ -182,7 +183,7 @@ static int init_signal(const struct process *restrict p)
 	int ret;
 
 	/* nothing to do in case of no timeout */
-	if (!p->timeout)
+	if (p->timeout == -1)
 		return 0;
 
 	/* for SIGALRM */
@@ -201,18 +202,30 @@ static int init_signal(const struct process *restrict p)
 
 static int init_timer(const struct process *restrict p)
 {
-	unsigned timeout_remain = p->timeout;
+	struct itimerval it = {
+		.it_value = {
+			.tv_sec		= p->timeout/1000,
+			.tv_usec	= (p->timeout%1000)*1000,
+		},
+		.it_interval = {0, 0},
+	};
+	int ret;
 
-	/* set the timeout alarm */
-	alarm(0);
-	while (timeout_remain)
-		timeout_remain = alarm(timeout_remain);
-
+	/* arm the new timer */
+	ret = setitimer(ITIMER_REAL, &it, NULL);
+	if (ret == -1) {
+		perror("setitimer");
+		return -1;
+	}
 	return 0;
 }
 
 static int reset_timer(const struct process *restrict p)
 {
+	struct itimerval zero = {
+		.it_value	= {0, 0},
+		.it_interval	= {0, 0},
+	};
 	sigset_t mask;
 	int ret;
 
@@ -232,6 +245,12 @@ static int reset_timer(const struct process *restrict p)
 	ret = sigprocmask(SIG_BLOCK, &mask, NULL);
 	if (ret == -1) {
 		perror("sigprocmask");
+		return -1;
+	}
+	/* reset the timer */
+	ret = setitimer(ITIMER_REAL, &zero, NULL);
+	if (ret == -1) {
+		perror("setitimer");
 		return -1;
 	}
 	ret = init_timer(p);
