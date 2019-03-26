@@ -30,60 +30,62 @@ struct client {
 	pthread_mutex_t		lock;
 };
 
-static struct server {
-	const struct parameter	*p;
+struct server {
+	const struct process	*p;
 	int			sd;
 	int			cindex;
 	struct client		*clients;
 	sem_t			sem;
-} server = {
-	.sd	= -1,
-	.cindex	= 0,
 };
 
-static const char *progname;
-static struct parameter {
-	unsigned	timeout;
-	unsigned	backlog;
-	int		daemon;
-	int		single;
-	int		pfamily;
-	int		afamily;
-	int		type;
-	int		proto;
-	int		port;
-	struct client	*(*fetch)(struct server *);
-	int		(*process)(struct client *);
-	FILE		*output;
-} param = {
+static struct process {
+	unsigned		timeout;
+	unsigned		backlog;
+	int			daemon;
+	int			single;
+	int			family;
+	int			type;
+	int			proto;
+	int			port;
+	struct client		*(*fetch)(struct server *);
+	int			(*handle)(struct client *);
+	FILE			*output;
+	struct server		s;
+	const char		*progname;
+	const char		*const opts;
+	const struct option	lopts[];
+} process = {
 	.timeout	= 30,
 	.backlog	= 5,
 	.daemon		= 0,
 	.single		= 0,
-	.pfamily	= PF_INET,
-	.afamily	= AF_INET,
+	.family		= AF_INET,
 	.type		= SOCK_STREAM,
 	.proto		= 0,
 	.port		= 9999,
-};
-static const char *const opts = "t:b:dsh";
-static const struct option lopts[] = {
-	{"timeout",	required_argument,	NULL,	't'},
-	{"backlog",	required_argument,	NULL,	'b'},
-	{"daemon",	no_argument,		NULL,	'd'},
-	{"single",	no_argument,		NULL,	's'},
-	{"help",	no_argument,		NULL,	'h'},
-	{NULL,		0,			NULL,	0},
+	.s		= {
+		.sd	= -1,
+		.cindex	= 0,
+	},
+	.progname	= NULL,
+	.opts		= "t:b:dsh",
+	.lopts		= {
+		{"timeout",	required_argument,	NULL,	't'},
+		{"backlog",	required_argument,	NULL,	'b'},
+		{"daemon",	no_argument,		NULL,	'd'},
+		{"single",	no_argument,		NULL,	's'},
+		{"help",	no_argument,		NULL,	'h'},
+		{NULL, 0, NULL, 0},
+	},
 };
 
-static void usage(FILE *stream, int status)
+static void usage(const struct process *restrict p, FILE *stream, int status)
 {
-	const struct parameter *p = &param;
 	const struct option *o;
 
-	fprintf(stream, "usage: %s [-%s]\n", progname, opts);
+	fprintf(stream, "usage: %s [-%s]\n", p->progname, p->opts);
 	fprintf(stream, "options:\n");
-	for (o = lopts; o->name; o++) {
+	for (o = p->lopts; o->name; o++) {
 		fprintf(stream, "\t-%c,--%s:", o->val, o->name);
 		switch (o->val) {
 		case 't':
@@ -111,7 +113,7 @@ static void usage(FILE *stream, int status)
 	exit(status);
 }
 
-static int init_daemon(const struct parameter *restrict p)
+static int init_daemon(const struct process *restrict p)
 {
 	int i, ret, fd = -1;
 	pid_t pid;
@@ -171,9 +173,8 @@ static void timeout_action(int signo, siginfo_t *si, void *tcontext)
 	exit(EXIT_SUCCESS);
 }
 
-static int init_signal(void)
+static int init_signal(const struct process *restrict p)
 {
-	const struct parameter *p = &param;
 	struct sigaction sa = {
 		.sa_flags	= SA_SIGINFO,
 		.sa_sigaction	= timeout_action,
@@ -198,7 +199,7 @@ static int init_signal(void)
 	return 0;
 }
 
-static int init_timer(const struct parameter *restrict p)
+static int init_timer(const struct process *restrict p)
 {
 	unsigned timeout_remain = p->timeout;
 
@@ -210,7 +211,7 @@ static int init_timer(const struct parameter *restrict p)
 	return 0;
 }
 
-static int reset_timer(const struct parameter *restrict p)
+static int reset_timer(const struct process *restrict p)
 {
 	sigset_t mask;
 	int ret;
@@ -244,12 +245,12 @@ static int reset_timer(const struct parameter *restrict p)
 	return 0;
 }
 
-static int init_socket(const struct parameter *restrict p)
+static int init_socket(const struct process *restrict p)
 {
 	struct sockaddr_in sin;
 	int sd, ret, opt;
 
-	sd = socket(p->pfamily, p->type, p->proto);
+	sd = socket(p->family, p->type, p->proto);
 	if (sd == -1) {
 		perror("socket");
 		ret = -1;
@@ -261,7 +262,7 @@ static int init_socket(const struct parameter *restrict p)
 		perror("setsockopt(SO_REUSEADDR)");
 		goto err;
 	}
-	sin.sin_family = p->afamily;
+	sin.sin_family = p->family;
 	sin.sin_addr.s_addr = 0;
 	sin.sin_port = htons(p->port);
 	ret = bind(sd, (struct sockaddr *)&sin, sizeof(sin));
@@ -284,9 +285,9 @@ err:
 
 static void *worker(void *arg);
 
-static int init_server(const struct parameter *restrict p)
+static int init_server(const struct process *restrict p)
 {
-	struct server *s = &server;
+	struct server *s = (struct server *)&p->s;
 	struct client *c;
 	int i, j, ret;
 
@@ -365,14 +366,14 @@ err0:
 	return -1;
 }
 
-static int init(const struct parameter *restrict p)
+static int init(const struct process *restrict p)
 {
 	int ret;
 
 	ret = init_daemon(p);
 	if (ret == -1)
 		return ret;
-	ret = init_signal();
+	ret = init_signal(p);
 	if (ret == -1)
 		return ret;
 	ret = init_timer(p);
@@ -403,7 +404,7 @@ static void dump(FILE *s, const unsigned char *restrict buf, size_t len)
 
 static struct client *fetch(struct server *s)
 {
-	const struct parameter *const p = s->p;
+	const struct process *const p = s->p;
 	char buf[BUFSIZ];
 	struct client *c;
 	socklen_t len;
@@ -422,17 +423,17 @@ again:
 	}
 	c->sd = ret;
 	fprintf(p->output, "from %s:%d\n",
-		inet_ntop(p->afamily, &c->addr.sin_addr, buf, sizeof(buf)),
+		inet_ntop(p->family, &c->addr.sin_addr, buf, sizeof(buf)),
 		ntohs(c->addr.sin_port));
 	/* for the next fetch */
 	s->cindex = (s->cindex+1)%p->backlog;
 	return c;
 }
 
-static int process(struct client *c)
+static int handle(struct client *c)
 {
 	const struct server *s = c->top;
-	const struct parameter *const p = s->p;
+	const struct process *const p = s->p;
 	char buf[BUFSIZ];
 	int ret;
 
@@ -489,7 +490,7 @@ static void *worker(void *arg)
 				continue;
 			}
 		}
-		if (process(ctx) == -1)
+		if (handle(ctx) == -1)
 			; /* ignore for now... */
 
 		ret = pthread_mutex_unlock(&ctx->lock);
@@ -516,7 +517,7 @@ out:
 
 static struct client *fetch_multi(struct server *s)
 {
-	const struct parameter *const p = s->p;
+	const struct process *const p = s->p;
 	char buf[BUFSIZ];
 	struct client *c;
 	socklen_t len;
@@ -552,14 +553,14 @@ accept:
 	}
 	c->sd = ret;
 	fprintf(p->output, "from %s:%d\n",
-		inet_ntop(p->afamily, &c->addr.sin_addr, buf, sizeof(buf)),
+		inet_ntop(p->family, &c->addr.sin_addr, buf, sizeof(buf)),
 		ntohs(c->addr.sin_port));
 	/* for the next fetch */
 	s->cindex = (s->cindex+1)%p->backlog;
 	return c;
 }
 
-static int process_multi(struct client *ctx)
+static int handle_multi(struct client *ctx)
 {
 	int ret;
 
@@ -580,7 +581,7 @@ static int process_multi(struct client *ctx)
 
 static void term(struct server *ctx)
 {
-	const struct parameter *const p = ctx->p;
+	const struct process *const p = ctx->p;
 	struct client *c;
 	int i, ret;
 
@@ -600,30 +601,30 @@ static void term(struct server *ctx)
 			perror("close");
 }
 
-int main(int argc, char *argv[])
+int main(int argc, char *const argv[])
 {
-	struct parameter *p = &param;
-	struct server *s = &server;
+	struct process *p = &process;
+	struct server *s = &p->s;
 	struct client *c;
-	int ret, opt;
+	int ret, o;
 
-	progname = argv[0];
+	p->progname = argv[0];
 	p->output = stdout;
 	p->fetch = fetch_multi;
-	p->process = process_multi;
-	while ((opt = getopt_long(argc, argv, opts, lopts, NULL)) != -1) {
+	p->handle = handle_multi;
+	while ((o = getopt_long(argc, argv, p->opts, p->lopts, NULL)) != -1) {
 		long val;
-		switch (opt) {
+		switch (o) {
 		case 't':
 			val = strtol(optarg, NULL, 10);
 			if (val < 0 || val >= LONG_MAX)
-				usage(stderr, EXIT_FAILURE);
+				usage(p, stderr, EXIT_FAILURE);
 			p->timeout = val;
 			break;
 		case 'b':
 			val = strtol(optarg, NULL, 10);
 			if (val <= 0 || val >= LONG_MAX)
-				usage(stderr, EXIT_FAILURE);
+				usage(p, stderr, EXIT_FAILURE);
 			p->backlog = val;
 			break;
 		case 'd':
@@ -632,14 +633,14 @@ int main(int argc, char *argv[])
 		case 's':
 			p->single = 0;
 			p->fetch = fetch;
-			p->process = process;
+			p->handle = handle;
 			break;
 		case 'h':
-			usage(stdout, EXIT_SUCCESS);
+			usage(p, stdout, EXIT_SUCCESS);
 			break;
 		case '?':
 		default:
-			usage(stderr, EXIT_FAILURE);
+			usage(p, stderr, EXIT_FAILURE);
 			break;
 		}
 	}
@@ -649,7 +650,7 @@ int main(int argc, char *argv[])
 
 	/* light the fire */
 	while ((c = (*p->fetch)(s)))
-	       if ((ret = (*p->process)(c)))
+	       if ((ret = (*p->handle)(c)))
 		       goto out;
 out:
 	term(s);
