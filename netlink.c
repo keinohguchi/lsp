@@ -95,8 +95,12 @@ static int init(struct process *p)
 	}
 	/* initialize the message header */
 	memset(&p->msg, 0, sizeof(p->msg));
-	p->msg.msg_name = &p->addr;
-	p->msg.msg_namelen = sizeof(p->addr);
+	p->msg.msg_name		= &p->addr;
+	p->msg.msg_namelen	= sizeof(p->addr);
+	p->msg.msg_iov		= &p->iov;
+	p->msg.msg_iovlen	= 1;
+	p->iov.iov_base		= p->buf;
+	p->iov.iov_len		= sizeof(p->buf);
 	p->nfds = sizeof(p->fds)/sizeof(struct pollfd);
 	p->fds.fd = s;
 	p->fds.events = POLLIN;
@@ -126,8 +130,17 @@ static const struct msghdr *fetch(struct process *p)
 	if (len == -1) {
 		perror("recvmsg");
 		return NULL;
-	}
+	} else if (len == 0)
+		return NULL;
+	printf("%ld=recvmsg()\n", len);
 	return &p->msg;
+}
+
+static int handle(const struct msghdr *restrict msg)
+{
+	char *buf = msg->msg_iov->iov_base;
+	printf("handling %c...\n", *buf);
+	return 0;
 }
 
 static void term(const struct process *restrict p)
@@ -191,9 +204,10 @@ int main(int argc, char *const argv[])
 	if (ret == -1)
 		return 1;
 
-	/* fetch the message */
+	/* handle the netlink messages */
 	while ((msg = fetch(p)))
-		printf("fetched...\n");
+		if (handle(msg))
+			break;
 
 	term(p);
 	return 0;
