@@ -8,17 +8,21 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <linux/netlink.h>
+#include <linux/rtnetlink.h>
 
 static struct process {
 	const char		*progname;
 	int			type;
+	int			family;
 	const char		*const opts;
 	const struct option	lopts[];
 } process = {
 	.type	= SOCK_RAW,
-	.opts	= "t:h",
+	.family	= NETLINK_ROUTE,
+	.opts	= "t:f:h",
 	.lopts	= {
 		{"type",	required_argument,	NULL,	't'},
+		{"family",	required_argument,	NULL,	'f'},
 		{"help",	no_argument,		NULL,	'h'},
 		{NULL, 0, NULL, 0}, /* sentry */
 	},
@@ -34,6 +38,9 @@ static void usage(const struct process *restrict p, FILE *s, int status)
 		switch (o->val) {
 		case 't':
 			fprintf(s, "\tNetlink socket type [raw|dgram] (default: raw)\n");
+			break;
+		case 'f':
+			fprintf(s, "\tNetlink family [route] (default: route)\n");
 			break;
 		case 'h':
 			fprintf(s, "\tDisplay this message and exit\n");
@@ -63,6 +70,12 @@ int main(int argc, char *const argv[])
 			else
 				usage(p, stderr, EXIT_FAILURE);
 			break;
+		case 'f':
+			if (!strncasecmp(optarg, "route", strlen(optarg)))
+				p->family = NETLINK_ROUTE;
+			else
+				usage(p, stderr, EXIT_FAILURE);
+			break;
 		case 'h':
 			usage(p, stdout, EXIT_SUCCESS);
 			break;
@@ -72,7 +85,7 @@ int main(int argc, char *const argv[])
 			break;
 		}
 	}
-	ret = socket(AF_NETLINK, p->type, 0);
+	ret = socket(AF_NETLINK, p->type, p->family);
 	if (ret == -1) {
 		perror("socket");
 		return 1;

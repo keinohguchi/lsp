@@ -11,7 +11,7 @@ int main(void)
 	char *const target = realpath("./netlink", NULL);
 	const struct test {
 		const char	*const name;
-		char		*const argv[4];
+		char		*const argv[6];
 		int		want;
 	} *t, tests[] = {
 		{
@@ -20,13 +20,28 @@ int main(void)
 			.want	= 0,
 		},
 		{
-			.name	= "SOCK_RAW socket type",
+			.name	= "default(SOCK_RAW|NETLINK_ROUTE) socket",
+			.argv	= {target, NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "SOCK_RAW socket",
 			.argv	= {target, "-t", "raw", NULL},
 			.want	= 0,
 		},
 		{
-			.name	= "SOCK_DGRAM socket type",
+			.name	= "SOCK_DGRAM socket",
 			.argv	= {target, "-t", "dgram", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "SOCK_RAW with NETLINK_ROUTE socket",
+			.argv	= {target, "-t", "raw", "-f", "route", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "SOCK_DGRAM with NETLINK_ROUTE socket",
+			.argv	= {target, "-t", "dgram", "-f", "route", NULL},
 			.want	= 0,
 		},
 		{ .name = NULL }, /* sentry */
