@@ -428,7 +428,7 @@ static void child_action(int signo, siginfo_t *si, void *context)
 	struct process *p = &process;
 	struct server *s;
 	int ret, status;
-	int i, count = 0;
+	int i;
 
 	printf("server[%d]: signal %s\n", si->si_pid, strsignal(signo));
 	if (signo != SIGCHLD)
@@ -454,12 +454,24 @@ static void child_action(int signo, siginfo_t *si, void *context)
 			perror("waitpid");
 			continue;
 		}
+		if (!WIFEXITED(status)) {
+			const union sigval val = {.sival_int = getpid()};
+			ret = sigqueue(s->pid, SIGTERM, val);
+			if (ret == -1) {
+				perror("sigqueue");
+				continue;
+			}
+			ret = waitpid(s->pid, &status, WNOHANG);
+			if (ret == -1) {
+				perror("waitpid");
+				continue;
+			}
+		}
 		/* just reset the pid for now */
 		s->pid = -1;
 	}
-	/* no more child, just exit for now. */
-	if (count == 0)
-		exit(EXIT_SUCCESS);
+	fprintf(stderr, "done\n");
+	_exit(EXIT_SUCCESS);
 }
 
 static int init_signal(const struct process *restrict p)

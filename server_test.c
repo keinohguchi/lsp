@@ -45,6 +45,11 @@ int main(void)
 			.argv		= {target, "-c", "2", "-b", "1000", "-t", "1", NULL},
 			.want		= 0,
 		},
+		{
+			.name		= "multi worker(1000) 5 listening backlog",
+			.argv		= {target, "-c", "1000", "-b", "5", "-t", "1", NULL},
+			.want		= 0,
+		},
 		{ .name = NULL }, /* sentry */
 	};
 	int ret = -1;
