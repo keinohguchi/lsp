@@ -216,30 +216,78 @@ static int fetch(struct context *ctx)
 	return epoll_wait(ctx->efd, ctx->events, nr, timeout);
 }
 
+static int handle_ifinfomsg(struct context *ctx, const struct ifinfomsg *restrict ifi)
+{
+	printf("ifi_family=%d,ifi_type=%hd,ifi_index=%d,ifi_flags=0x%08x,ifi_change=0x%08x\n",
+	       ifi->ifi_family, ifi->ifi_type, ifi->ifi_index, ifi->ifi_flags, ifi->ifi_change);
+	return 0;
+}
+
+static ssize_t handle_input_event(struct context *ctx, struct epoll_event *e)
+{
+	char *buf = ctx->buf;
+	struct nlmsgerr *err;
+	struct nlmsghdr *nh;
+	ssize_t ret, len, total;
+	int nr;
+
+	ret = recvmsg(e->data.fd, &ctx->msg, 0);
+	if (ret == -1) {
+		perror("recvmsg");
+		return  -1;
+	} else if (ret == 0)
+		return 0; /* EOF */
+	total = len = ret;
+	nr = 0;
+	for (nh = (struct nlmsghdr *)buf; NLMSG_OK(nh, len); nh = NLMSG_NEXT(nh, len)) {
+		if (nh->nlmsg_type == NLMSG_DONE)
+			break;
+		switch (nh->nlmsg_type) {
+		case NLMSG_NOOP:
+			continue;
+		case NLMSG_ERROR:
+			err = NLMSG_DATA(nh);
+			printf("nlmsgerr.error=%d\n", err->error);
+			break;
+		case RTM_NEWLINK:
+		case RTM_DELLINK:
+		case RTM_GETLINK:
+			ret = handle_ifinfomsg(ctx, NLMSG_DATA(nh));
+			if (ret == -1)
+				return ret;
+			nr++;
+			break;
+		default:
+			printf("unsupported nlmsg_type(%d)\n", nh->nlmsg_type);
+			break;
+		}
+	}
+	printf("%ld=recvmsg() with %d nlmsg data\n", total, nr);
+	return nr;
+}
+
+static ssize_t handle_event(struct context *ctx, struct epoll_event *e)
+{
+	ssize_t len = 0;
+	if (e->events & EPOLLIN)
+		len = handle_input_event(ctx, e);
+	if (e->events & ~EPOLLIN)
+		printf("%d has events(0x%x)\n",
+		       e->data.fd, e->events&~EPOLLIN);
+	return len;
+}
+
 static int handle(struct context *ctx, int nr)
 {
-	int i;
+	int i, ret;
 	printf("handling...\n");
 	if (nr == 0) {
 		printf("epoll(2) timed out\n");
 		return 0;
 	}
-	for (i = 0; i < nr; i++) {
-		struct epoll_event *e = &ctx->events[i];
-		if (e->events & EPOLLIN) {
-			ssize_t len = recvmsg(e->data.fd, &ctx->msg, 0);
-			if (len == -1)
-				perror("recvmsg");
-			else {
-				printf("%ld=recvmsg()\n", len);
-				if (len == 0)
-					return 0; /* EOF */
-			}
-		}
-		if (e->events & ~EPOLLIN)
-			printf("%d has events(0x%x)\n",
-			       e->data.fd, e->events&~EPOLLIN);
-	}
+	for (i = 0; i < nr; i++)
+		if ((ret = handle_event(ctx, &ctx->events[i])) <= 0)
+			return ret;
 	return i;
 }
 
