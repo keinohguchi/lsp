@@ -8,6 +8,7 @@
 #include <sys/epoll.h>
 
 struct context {
+	const struct process	*p;
 	int			efd;
 	struct epoll_event	events[1]; /* single event */
 };
@@ -59,6 +60,8 @@ static int init(struct process *p)
 	efd = epoll_create1(EPOLL_CLOEXEC);
 	if (efd == -1)
 		return -1;
+	ctx->p			= p;
+	ctx->efd		= efd;
 	ctx->events[0].events	= EPOLLIN;
 	ctx->events[0].data.fd	= STDIN_FILENO;
 	ret = epoll_ctl(efd, EPOLL_CTL_ADD, STDIN_FILENO, ctx->events);
@@ -66,7 +69,6 @@ static int init(struct process *p)
 		perror("epoll_ctl");
 		goto err;
 	}
-	ctx->efd = efd;
 	return 0;
 err:
 	if (close(efd))
@@ -79,6 +81,43 @@ static void term(const struct process *restrict p)
 	const struct context *const ctx = p->ctx;
 	if (close(ctx->efd))
 		perror("close");
+}
+
+static int fetch(struct context *ctx)
+{
+	int nr = sizeof(ctx->events)/sizeof(struct epoll_event);
+	int timeout = ctx->p->timeout;
+	printf("waiting...\n");
+	return epoll_wait(ctx->efd, ctx->events, nr, timeout);
+}
+
+static int handle(struct context *ctx, int nr)
+{
+	struct epoll_event *e = ctx->events;
+	char buf[BUFSIZ];
+	int i;
+
+	printf("handling...\n");
+	if (nr == 0) {
+		printf("epoll(2) timed out\n");
+		return 0;
+	}
+	for (i = 0; i < nr; i++) {
+		if (e->events & EPOLLIN) {
+			ssize_t len = read(e->data.fd, buf, sizeof(buf));
+			if (len == -1)
+				perror("read");
+			else {
+				buf[len] = '\0';
+				printf("%ld=read('%s')\n", len, buf);
+				if (len == 0)
+					return 0; /* EOF */
+			}
+		}
+		if (e->events & EPOLLOUT)
+			printf("%d is writable\n", e->data.fd);
+	}
+	return i;
 }
 
 int main(int argc, char *const argv[])
@@ -109,6 +148,11 @@ int main(int argc, char *const argv[])
 	ret = init(p);
 	if (ret == -1)
 		return 1;
+	while ((ret = fetch(p->ctx)) != -1)
+		if ((ret = handle(p->ctx, ret)) <= 0)
+			break;
 	term(p);
+	if (ret)
+		return 1;
 	return 0;
 }

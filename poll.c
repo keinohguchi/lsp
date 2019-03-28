@@ -55,8 +55,8 @@ static int init(struct process *p)
 {
 	struct context *ctx = p->ctx;
 	ctx->p			= p;
-	ctx->fds[0].fd		= STDIN_FILENO;
 	ctx->fds[0].events	= POLLIN;
+	ctx->fds[0].fd		= STDIN_FILENO;
 	ctx->nfds = sizeof(ctx->fds)/sizeof(struct pollfd);
 	return 0;
 }
