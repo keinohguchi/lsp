@@ -26,6 +26,7 @@ struct context {
 static struct process {
 	struct context		ctx[1];	/* single context */
 	const char		*progname;
+	int			edge:1;
 	short			timeout;
 	int			type;
 	int			family;
@@ -33,12 +34,14 @@ static struct process {
 	const char		*const opts;
 	const struct option	lopts[];
 } process = {
+	.edge		= 0,	/* level triggered */
 	.timeout	= 5000, /* ms */
 	.type		= SOCK_RAW,
 	.family		= NETLINK_ROUTE,
 	.group		= RTMGRP_LINK,
-	.opts		= "t:T:f:g:h",
+	.opts		= "et:T:f:g:h",
 	.lopts		= {
+		{"edge",	no_argument,		NULL,	'e'},
 		{"timeout",	required_argument,	NULL,	't'},
 		{"type",	required_argument,	NULL,	'T'},
 		{"family",	required_argument,	NULL,	'f'},
@@ -56,6 +59,9 @@ static void usage(const struct process *restrict p, FILE *s, int status)
 	for (o = p->lopts; o->name; o++) {
 		fprintf(s, "\t-%c,--%s:", o->val, o->name);
 		switch (o->val) {
+		case 'e':
+			fprintf(s, "\tEdge triggered events (default: off, e.g. level triggered)\n");
+			break;
 		case 't':
 			fprintf(s, "\tInactivity timeout in millisecond (default: %hd)\n",
 				p->timeout);
@@ -104,8 +110,10 @@ static int init(struct process *p)
 		perror("bind");
 		goto err;
 	}
-	ctx->events[0].events	= EPOLLIN;
-	ctx->events[0].data.fd	= sfd;
+	ctx->events[0].events		= EPOLLIN;
+	if (p->edge)
+		ctx->events[0].events	|= EPOLLET;
+	ctx->events[0].data.fd		= sfd;
 	ret = epoll_ctl(efd, EPOLL_CTL_ADD, sfd, ctx->events);
 	if (ret == -1) {
 		perror("epoll_ctl");
@@ -187,6 +195,9 @@ int main(int argc, char *const argv[])
 	while ((o = getopt_long(argc, argv, p->opts, p->lopts, NULL)) != -1) {
 		long val;
 		switch (o) {
+		case 'e':
+			p->edge = 1;
+			break;
 		case 't':
 			val = strtol(optarg, NULL, 10);
 			if (val < -1 || val > SHRT_MAX)

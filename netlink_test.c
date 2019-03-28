@@ -44,6 +44,11 @@ int main(void)
 			.argv	= {target, "-T", "dgram", "-f", "route", "-t", "1", NULL},
 			.want	= 0,
 		},
+		{
+			.name	= "edge triggered event with epoll(7)",
+			.argv	= {target, "-e", "-t", "1", NULL},
+			.want	= 0,
+		},
 		{ .name = NULL }, /* sentry */
 	};
 	int ret = 0;
