@@ -89,6 +89,7 @@ static int fetch(struct context *ctx)
 
 static int handle(const struct context *restrict ctx, int nr)
 {
+	char buf[BUFSIZ];
 	int i, j;
 
 	if (nr == 0) {
@@ -98,8 +99,15 @@ static int handle(const struct context *restrict ctx, int nr)
 	for (i = 0; i < nr; ) {
 		for (j = 0; j < ctx->nfds; j++)
 			if (FD_ISSET(j, &ctx->rrfds)) {
-				printf("fileno(%d) is read ready\n", j);
-				i++;
+				ssize_t len = read(j, buf, sizeof(buf));
+				if (len == -1)
+					perror("read");
+				else {
+					buf[len] = '\0';
+					printf("%ld=read('%s')\n", len, buf);
+					if (len == 0)
+						return 0; /* EOF */
+				}
 			}
 		for (j = 0; j < ctx->nfds; j++)
 			if (FD_ISSET(j, &ctx->rwfds)) {
