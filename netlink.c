@@ -21,7 +21,7 @@ struct context {
 	struct msghdr		msg;
 	struct sockaddr_nl	addr;
 	struct iovec		iov;
-	char			buf[8164];
+	char			*buf;
 };
 
 static struct process {
@@ -143,6 +143,7 @@ static int init(struct process *p)
 	struct context *ctx = p->ctx;
 	struct sockaddr_nl sa;
 	int ret, efd = -1, sfd = -1;
+	long sz;
 
 	efd = epoll_create1(EPOLL_CLOEXEC);
 	if (efd == -1) {
@@ -171,6 +172,16 @@ static int init(struct process *p)
 		perror("epoll_ctl");
 		goto err;
 	}
+	sz = sysconf(_SC_PAGESIZE);
+	if (sz == -1) {
+		perror("sysconf");
+		goto err;
+	}
+	ctx->buf = malloc(sz*4); /* PAGESIZE*4 */
+	if (ctx->buf == NULL) {
+		perror("malloc");
+		goto err;
+	}
 	/* initialize the message header */
 	memset(&ctx->msg, 0, sizeof(ctx->msg));
 	ctx->p			= p;
@@ -181,7 +192,7 @@ static int init(struct process *p)
 	ctx->msg.msg_iov	= &ctx->iov;
 	ctx->msg.msg_iovlen	= 1;
 	ctx->iov.iov_base	= ctx->buf;
-	ctx->iov.iov_len	= sizeof(ctx->buf);
+	ctx->iov.iov_len	= sz*4;
 	ret = init_signal(p);
 	if (ret == -1)
 		goto err;
@@ -235,6 +246,8 @@ static void term(struct process *p)
 {
 	struct context *ctx = p->ctx;
 	printf("terminating...\n");
+	if (ctx->buf != NULL)
+		free(ctx->buf);
 	if (ctx->efd != -1) {
 		if (close(ctx->efd))
 			perror("close");
