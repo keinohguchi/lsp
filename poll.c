@@ -6,15 +6,20 @@
 #include <poll.h>
 #include <getopt.h>
 
-static struct process {
-	struct pollfd		fds[1];
+struct context {
+	const struct process	*p;
+	struct pollfd		fds[1]; /* single file descriptor */
 	nfds_t			nfds;
+};
+
+static struct process {
+	struct context		ctx[1]; /* single context */
 	short			timeout;
 	const char		*progname;
 	const char		*const opts;
 	const struct option	lopts[];
 } process = {
-	.nfds		= 0,
+	.ctx[0].nfds	= 0,
 	.timeout	= 5000,
 	.opts		= "t:h",
 	.lopts		= {
@@ -49,15 +54,30 @@ static void usage(const struct process *restrict p, FILE *s, int status)
 
 static int init(struct process *p)
 {
-	p->fds[0].fd		= STDIN_FILENO;
-	p->fds[0].events	= POLLIN;
-	p->nfds = sizeof(p->fds)/sizeof(struct pollfd);
+	struct context *ctx = p->ctx;
+	ctx->p			= p;
+	ctx->fds[0].fd		= STDIN_FILENO;
+	ctx->fds[0].events	= POLLIN;
+	ctx->nfds = sizeof(ctx->fds)/sizeof(struct pollfd);
 	return 0;
 }
 
 static void term(const struct process *restrict p)
 {
 	return;
+}
+
+static int fetch(struct context *ctx)
+{
+	int timeout = ctx->p->timeout;
+	return poll(ctx->fds, ctx->nfds, timeout);
+}
+
+static int handle(struct context *ctx)
+{
+	if (ctx->fds[0].revents & POLLIN)
+		printf("stdin ready\n");
+	return 0;
 }
 
 int main(int argc, char *const argv[])
@@ -88,17 +108,13 @@ int main(int argc, char *const argv[])
 	ret = init(p);
 	if (ret == -1)
 		return 1;
-	/* let's rock */
-	while (1) {
-		ret = poll(p->fds, p->nfds, p->timeout);
-		if (ret == -1) {
-			perror("poll");
+
+	/* main loop */
+	while ((ret = fetch(p->ctx)) > 0)
+		if ((ret = handle(p->ctx)))
 			break;
-		} else if (ret == 0)
-			break;
-		if (p->fds[0].revents & POLLIN)
-			printf("stdin ready\n");
-	}
+	if (ret == 0)
+		printf("poll(2) timed out\n");
 	term(p);
 	if (ret)
 		return 1;
