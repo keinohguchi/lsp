@@ -6,6 +6,7 @@ cscope.*
 liblsp.a
 select
 poll
+epoll
 inode
 block
 wait
