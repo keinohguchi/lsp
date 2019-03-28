@@ -7,7 +7,16 @@
 #include <sys/time.h>
 #include <sys/select.h>
 
+struct context {
+	const struct process	*p;
+	fd_set			rfds, rrfds;
+	fd_set			wfds, rwfds;
+	fd_set			xfds, rxfds;
+	int			nfds;
+};
+
 static struct process {
+	struct context		ctx[1]; /* single context */
 	long			timeout;
 	const char		*progname;
 	const char		*const opts;
@@ -45,46 +54,65 @@ static void usage(const struct process *restrict p, FILE *s, int status)
 	exit(status);
 }
 
-static int fetch(const struct process *restrict p, int fd)
+static int init(struct process *p)
 {
-	struct timeval tv = {
-		.tv_sec		= p->timeout/1000,
-		.tv_usec	= (p->timeout%1000)*1000,
-	};
-	fd_set rfd;
-	int ret;
-
-	/* select(2) requires resetting the sets */
-again:
-	FD_ZERO(&rfd);
-	FD_SET(fd, &rfd);
-	ret = select(fd+1, &rfd, NULL, NULL, &tv);
-	if (ret == -1) {
-		perror("select");
-		return -1;
-	} else if (ret == 0)
-		/* timed out */
-		return 0;
-
-	if (!FD_ISSET(fd, &rfd))
-		goto again;
-
-	return ret;
+	struct context *ctx = p->ctx;
+	ctx->p = p;
+	FD_ZERO(&ctx->rfds);
+	FD_ZERO(&ctx->wfds);
+	FD_ZERO(&ctx->xfds);
+	ctx->nfds = 0;
+	FD_SET(STDIN_FILENO, &ctx->rfds);
+	if (STDIN_FILENO >= ctx->nfds)
+		ctx->nfds = STDIN_FILENO+1;
+	return 0;
 }
 
-static int handle(int fd)
+static void term(const struct process *p)
 {
-	char buf[BUFSIZ+1];
-	int ret;
+	return;
+}
 
-	ret = read(fd, buf, BUFSIZ);
-	if (ret == -1) {
-		perror("read");
-		return -1;
+static int fetch(struct context *ctx)
+{
+	struct timeval timeout = {
+		.tv_sec		= ctx->p->timeout/1000,
+		.tv_usec	= ctx->p->timeout%1000*1000,
+	};
+	/* select(2) requires to reset the fd_set for each call */
+	ctx->rrfds = ctx->rfds;
+	ctx->rwfds = ctx->wfds;
+	ctx->rxfds = ctx->xfds;
+	return select(ctx->nfds, &ctx->rfds, &ctx->wfds, &ctx->xfds,
+		      &timeout);
+}
+
+static int handle(const struct context *restrict ctx, int nr)
+{
+	int i, j;
+
+	if (nr == 0) {
+		printf("select(2) timed out\n");
+		return 0;
 	}
-	buf[ret] = '\0';
-	printf("%s", buf);
-	return 0;
+	for (i = 0; i < nr; ) {
+		for (j = 0; j < ctx->nfds; j++)
+			if (FD_ISSET(j, &ctx->rrfds)) {
+				printf("fileno(%d) is read ready\n", j);
+				i++;
+			}
+		for (j = 0; j < ctx->nfds; j++)
+			if (FD_ISSET(j, &ctx->rwfds)) {
+				printf("fileno(%d) is write ready\n", j);
+				i++;
+			}
+		for (j = 0; j < ctx->nfds; j++)
+			if (FD_ISSET(j, &ctx->rxfds)) {
+				printf("fileno(%d) is exception ready\n", j);
+				i++;
+			}
+	}
+	return i;
 }
 
 int main(int argc, char *const argv[])
@@ -111,12 +139,16 @@ int main(int argc, char *const argv[])
 			break;
 		}
 	}
+	ret = init(p);
+	if (ret == -1)
+		return 1;
 
-	/* let's rock */
-	while ((ret = fetch(p, STDOUT_FILENO)) > 0)
-		if ((ret = handle(STDOUT_FILENO)) < 0)
+	/* let's roll */
+	while ((ret = fetch(p->ctx)) != -1)
+		if ((ret = handle(p->ctx, ret)) <= 0)
 			break;
 
+	term(p);
 	if (ret < 0)
 		return 1;
 	return 0;

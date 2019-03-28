@@ -8,7 +8,7 @@
 
 struct context {
 	const struct process	*p;
-	struct pollfd		fds[1]; /* single file descriptor */
+	struct pollfd		fds[1]; /* stdin */
 	nfds_t			nfds;
 };
 
@@ -74,7 +74,7 @@ static int fetch(struct context *ctx)
 }
 
 /* handle returns the number of handled events, or zero in case of timeout */
-static int handle(struct context *ctx, int nr)
+static int handle(const struct context *restrict ctx, int nr)
 {
 	int i, j;
 
@@ -91,8 +91,15 @@ static int handle(struct context *ctx, int nr)
 			if (ctx->fds[i].revents & POLLIN)
 				printf("stdin read ready\n");
 			if (ctx->fds[i].revents & ~POLLIN)
-				printf("stdin has other event(0x%x)\n",
+				printf("stdin has other events(0x%x)\n",
 				       ctx->fds[i].revents & ~POLLIN);
+			break;
+		case STDOUT_FILENO:
+			if (ctx->fds[i].revents & POLLOUT)
+				printf("stdout write ready\n");
+			if (ctx->fds[i].revents & ~POLLOUT)
+				printf("stdout has other events(0x%x)\n",
+				       ctx->fds[i].revents & ~POLLOUT);
 			break;
 		default:
 			printf("fd=%d has event(0x%x)\n",
