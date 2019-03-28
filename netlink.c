@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/epoll.h>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <linux/if.h>
 #include <linux/netlink.h>
@@ -18,6 +19,7 @@ struct context {
 	const struct process	*p;
 	int			sfd;
 	int			efd;
+	int			ifindex;
 	struct epoll_event	events[1]; /* single event */
 	struct msghdr		msg;
 	struct sockaddr_nl	addr;
@@ -33,6 +35,7 @@ static struct process {
 	int			type;
 	int			family;
 	int			group;
+	const char		*iface;
 	const char		*const opts;
 	const struct option	lopts[];
 } process = {
@@ -41,13 +44,15 @@ static struct process {
 	.type		= SOCK_RAW,
 	.family		= NETLINK_ROUTE,
 	.group		= RTMGRP_LINK,
-	.opts		= "et:T:f:g:h",
+	.iface		= NULL,
+	.opts		= "i:et:T:f:g:h",
 	.lopts		= {
 		{"edge",	no_argument,		NULL,	'e'},
 		{"timeout",	required_argument,	NULL,	't'},
 		{"type",	required_argument,	NULL,	'T'},
 		{"family",	required_argument,	NULL,	'f'},
 		{"group",	required_argument,	NULL,	'g'},
+		{"iface",	required_argument,	NULL,	'i'},
 		{"help",	no_argument,		NULL,	'h'},
 		{NULL, 0, NULL, 0}, /* sentry */
 	},
@@ -61,6 +66,9 @@ static void usage(const struct process *restrict p, FILE *s, int status)
 	for (o = p->lopts; o->name; o++) {
 		fprintf(s, "\t-%c,--%s:", o->val, o->name);
 		switch (o->val) {
+		case 'i':
+			fprintf(s, "\tInterface name to query for (default: none)");
+			break;
 		case 'e':
 			fprintf(s, "\tEdge triggered events (default: off, e.g. level triggered)\n");
 			break;
@@ -139,10 +147,25 @@ static int init_signal(const struct process *restrict p)
 	return 0;
 }
 
+static int init_ifindex(int s, const char *restrict iface)
+{
+	struct ifreq ifr;
+	int ret;
+
+	strcpy(ifr.ifr_name, iface);
+	ret = ioctl(s, SIOCGIFINDEX, &ifr);
+	if (ret == -1) {
+		perror("ioctl");
+		return -1;
+	}
+	return ifr.ifr_ifindex;
+}
+
 static int init(struct process *p)
 {
 	struct context *ctx = p->ctx;
 	struct sockaddr_nl sa;
+	int ifindex = -1;
 	int ret, efd = -1, sfd = -1;
 	long bufsiz;
 
@@ -164,6 +187,13 @@ static int init(struct process *p)
 		perror("bind");
 		goto err;
 	}
+	if (p->iface) {
+		ret = init_ifindex(sfd, p->iface);
+		if (ret == -1)
+			goto err;
+		ifindex = ret;
+	}
+	ctx->ifindex			= ifindex;
 	ctx->events[0].events		= EPOLLIN;
 	if (p->edge)
 		ctx->events[0].events	|= EPOLLET;
@@ -268,7 +298,11 @@ static char *ifflags(unsigned flags)
 
 static int handle_ifinfomsg(struct context *ctx, const struct ifinfomsg *restrict ifi)
 {
-	char *flags = ifflags(ifi->ifi_flags);
+	char *flags;
+	/* filter out based on the interface index */
+	if (ctx->ifindex != -1 && ifi->ifi_index != ctx->ifindex)
+		return 0;
+	flags = ifflags(ifi->ifi_flags);
 	if (flags == NULL) {
 		printf("family=%d,type=%hd,index=%d,flags=0x%08x,change=0x%08x\n",
 		       ifi->ifi_family, ifi->ifi_type, ifi->ifi_index,
@@ -354,6 +388,8 @@ static void term(struct process *p)
 {
 	struct context *ctx = p->ctx;
 	printf("terminating...\n");
+	if (p->iface != NULL)
+		free((void *)p->iface);
 	if (ctx->buf != NULL)
 		free(ctx->buf);
 	if (ctx->efd != -1) {
@@ -378,6 +414,11 @@ int main(int argc, char *const argv[])
 	while ((o = getopt_long(argc, argv, p->opts, p->lopts, NULL)) != -1) {
 		long val;
 		switch (o) {
+		case 'i':
+			if (p->iface)
+				free((void *)p->iface);
+			p->iface = strdup(optarg);
+			break;
 		case 'e':
 			p->edge = 1;
 			break;

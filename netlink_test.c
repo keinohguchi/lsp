@@ -49,6 +49,16 @@ int main(void)
 			.argv	= {target, "-e", "-t", "1", NULL},
 			.want	= 0,
 		},
+		{
+			.name	= "iface option success",
+			.argv	= {target, "-i", "lo", "-t", "1", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "iface option failure",
+			.argv	= {target, "-i", "someInterface", NULL},
+			.want	= 1,
+		},
 		{ .name = NULL }, /* sentry */
 	};
 	int ret = 0;
