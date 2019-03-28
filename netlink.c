@@ -5,17 +5,18 @@
 #include <strings.h>
 #include <limits.h>
 #include <getopt.h>
-#include <poll.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/epoll.h>
 #include <sys/socket.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 
 struct context {
 	const struct process	*p;
-	struct pollfd		fds[1]; /* single file descriptor */
-	nfds_t			nfds;
+	int			sfd;
+	int			efd;
+	struct epoll_event	events[1]; /* single event */
 	struct msghdr		msg;
 	struct sockaddr_nl	addr;
 	struct iovec		iov;
@@ -83,52 +84,75 @@ static int init(struct process *p)
 {
 	struct context *ctx = p->ctx;
 	struct sockaddr_nl sa;
-	int s, ret;
+	int ret, efd = -1, sfd = -1;
 
-	s = socket(AF_NETLINK, p->type, p->family);
-	if (s == -1) {
-		perror("socket");
+	efd = epoll_create1(EPOLL_CLOEXEC);
+	if (efd == -1) {
+		perror("epoll_create1");
 		return -1;
+	}
+	sfd = socket(AF_NETLINK, p->type, p->family);
+	if (sfd == -1) {
+		perror("socket");
+		goto err;
 	}
 	memset(&sa, 0, sizeof(sa));
 	sa.nl_family = AF_NETLINK;
 	sa.nl_groups = p->group;
-	ret = bind(s, (struct sockaddr *)&sa, sizeof(sa));
+	ret = bind(sfd, (struct sockaddr *)&sa, sizeof(sa));
 	if (ret == -1) {
 		perror("bind");
+		goto err;
+	}
+	ctx->events[0].events	= EPOLLIN;
+	ctx->events[0].data.fd	= sfd;
+	ret = epoll_ctl(efd, EPOLL_CTL_ADD, sfd, ctx->events);
+	if (ret == -1) {
+		perror("epoll_ctl");
 		goto err;
 	}
 	/* initialize the message header */
 	memset(&ctx->msg, 0, sizeof(ctx->msg));
 	ctx->p			= p;
+	ctx->efd		= efd;
+	ctx->sfd		= sfd;
 	ctx->msg.msg_name	= &ctx->addr;
 	ctx->msg.msg_namelen	= sizeof(ctx->addr);
 	ctx->msg.msg_iov	= &ctx->iov;
 	ctx->msg.msg_iovlen	= 1;
 	ctx->iov.iov_base	= ctx->buf;
 	ctx->iov.iov_len	= sizeof(ctx->buf);
-	ctx->nfds		= sizeof(ctx->fds)/sizeof(struct pollfd);
-	ctx->fds[0].fd		= s;
-	ctx->fds[0].events	= POLLIN;
 	return 0;
 err:
-	if (close(s))
-		perror("close");
+	if (sfd != -1)
+		if (close(sfd))
+			perror("close");
+	if (efd != -1)
+		if (close(efd))
+			perror("close");
 	return ret;
 }
 
 static int fetch(struct context *ctx)
 {
 	int timeout = ctx->p->timeout;
-	return poll(ctx->fds, ctx->nfds, timeout);
+	int nr = sizeof(ctx->events)/sizeof(struct epoll_event);
+	printf("waiting...\n");
+	return epoll_wait(ctx->efd, ctx->events, nr, timeout);
 }
 
 static int handle(struct context *ctx, int nr)
 {
 	int i;
-	for (i = 0; i < ctx->nfds; i++) {
-		if (ctx->fds[i].revents & POLLIN) {
-			ssize_t len = recvmsg(ctx->fds[i].fd, &ctx->msg, 0);
+	printf("handling...\n");
+	if (nr == 0) {
+		printf("epoll(2) timed out\n");
+		return 0;
+	}
+	for (i = 0; i < nr; i++) {
+		struct epoll_event *e = &ctx->events[i];
+		if (e->events & EPOLLIN) {
+			ssize_t len = recvmsg(e->data.fd, &ctx->msg, 0);
 			if (len == -1)
 				perror("recvmsg");
 			else {
@@ -137,9 +161,9 @@ static int handle(struct context *ctx, int nr)
 					return 0; /* EOF */
 			}
 		}
-		if (ctx->fds[i].revents & ~POLLIN)
+		if (e->events & ~EPOLLIN)
 			printf("%d has events(0x%x)\n",
-			       ctx->fds[i].fd, ctx->fds[i].revents&~POLLIN);
+			       e->data.fd, e->events&~EPOLLIN);
 	}
 	return i;
 }
@@ -147,13 +171,10 @@ static int handle(struct context *ctx, int nr)
 static void term(const struct process *restrict p)
 {
 	const struct context *ctx = p->ctx;
-	const struct pollfd *fd;
-	int i;
-
-	for (i = 0, fd = ctx->fds; i < ctx->nfds; i++, fd++)
-		if (fd->fd != -1)
-			if (close(fd->fd))
-				perror("close");
+	if (close(ctx->efd))
+		perror("close");
+	if (close(ctx->sfd))
+		perror("close");
 }
 
 int main(int argc, char *const argv[])
