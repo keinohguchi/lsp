@@ -73,11 +73,36 @@ static int fetch(struct context *ctx)
 	return poll(ctx->fds, ctx->nfds, timeout);
 }
 
-static int handle(struct context *ctx)
+/* handle returns the number of handled events, or zero in case of timeout */
+static int handle(struct context *ctx, int nr)
 {
-	if (ctx->fds[0].revents & POLLIN)
-		printf("stdin ready\n");
-	return 0;
+	int i, j;
+
+	if (nr == 0) {
+		printf("poll(2) timed out");
+		return 0;
+	}
+	j = 0;
+	for (i = 0; i < ctx->nfds; i++) {
+		if (!ctx->fds[i].revents)
+			continue;
+		switch (ctx->fds[i].fd) {
+		case STDIN_FILENO:
+			if (ctx->fds[i].revents & POLLIN)
+				printf("stdin read ready\n");
+			if (ctx->fds[i].revents & ~POLLIN)
+				printf("stdin has other event(0x%x)\n",
+				       ctx->fds[i].revents & ~POLLIN);
+			break;
+		default:
+			printf("fd=%d has event(0x%x)\n",
+			       ctx->fds[i].fd, ctx->fds[i].revents);
+			break;
+		}
+		if (++j >= nr)
+			break;
+	}
+	return j;
 }
 
 int main(int argc, char *const argv[])
@@ -109,12 +134,11 @@ int main(int argc, char *const argv[])
 	if (ret == -1)
 		return 1;
 
-	/* main loop */
-	while ((ret = fetch(p->ctx)) > 0)
-		if ((ret = handle(p->ctx)))
+	/* let's roll */
+	while ((ret = fetch(p->ctx)) != -1)
+		if ((ret = handle(p->ctx, ret)) <= 0)
 			break;
-	if (ret == 0)
-		printf("poll(2) timed out\n");
+
 	term(p);
 	if (ret)
 		return 1;
