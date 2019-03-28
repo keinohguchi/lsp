@@ -70,14 +70,17 @@ static void term(const struct process *restrict p)
 static int fetch(struct context *ctx)
 {
 	int timeout = ctx->p->timeout;
+	printf("waiting...\n");
 	return poll(ctx->fds, ctx->nfds, timeout);
 }
 
 /* handle returns the number of handled events, or zero in case of timeout */
 static int handle(const struct context *restrict ctx, int nr)
 {
+	char buf[BUFSIZ];
 	int i, j;
 
+	printf("handling...\n");
 	if (nr == 0) {
 		printf("poll(2) timed out");
 		return 0;
@@ -88,18 +91,20 @@ static int handle(const struct context *restrict ctx, int nr)
 			continue;
 		switch (ctx->fds[i].fd) {
 		case STDIN_FILENO:
-			if (ctx->fds[i].revents & POLLIN)
-				printf("stdin read ready\n");
+			if (ctx->fds[i].revents & POLLIN) {
+				ssize_t len = read(ctx->fds[i].fd, buf, sizeof(buf));
+				if (len == -1)
+					perror("read");
+				else {
+					buf[len] = '\0';
+					printf("%ld=read('%s')\n", len, buf);
+					if (len == 0)
+						return 0; /* EOF */
+				}
+			}
 			if (ctx->fds[i].revents & ~POLLIN)
 				printf("stdin has other events(0x%x)\n",
 				       ctx->fds[i].revents & ~POLLIN);
-			break;
-		case STDOUT_FILENO:
-			if (ctx->fds[i].revents & POLLOUT)
-				printf("stdout write ready\n");
-			if (ctx->fds[i].revents & ~POLLOUT)
-				printf("stdout has other events(0x%x)\n",
-				       ctx->fds[i].revents & ~POLLOUT);
 			break;
 		default:
 			printf("fd=%d has event(0x%x)\n",
