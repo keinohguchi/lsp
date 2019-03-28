@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <limits.h>
-#include <poll.h>
 #include <getopt.h>
+#include <limits.h>
+#include <unistd.h>
+#include <poll.h>
 
 struct context {
 	const struct process	*p;
@@ -19,8 +19,7 @@ static struct process {
 	const char		*const opts;
 	const struct option	lopts[];
 } process = {
-	.ctx[0].nfds	= 0,
-	.timeout	= 5000,
+	.timeout	= 5000, /* ms */
 	.opts		= "t:h",
 	.lopts		= {
 		{"timeout",	required_argument,	NULL,	't'},

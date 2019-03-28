@@ -11,12 +11,17 @@ int main(void)
 	char *const target = realpath("./epoll", NULL);
 	const struct test {
 		const char	*const name;
-		char		*const argv[3];
+		char		*const argv[4];
 		int		want;
 	} *t, tests[] = {
 		{
 			.name	= "-h option",
 			.argv	= {target, "-h", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "--timeout option",
+			.argv	= {target, "-t", "1", NULL},
 			.want	= 0,
 		},
 		{.name = NULL}, /* sentry */
