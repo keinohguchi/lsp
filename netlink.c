@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <signal.h>
 #include <limits.h>
 #include <getopt.h>
 #include <unistd.h>
@@ -86,12 +87,66 @@ static void usage(const struct process *restrict p, FILE *s, int status)
 	exit(status);
 }
 
+static void term(struct process *p);
+
+static void term_action(int signo, siginfo_t *si, void *context)
+{
+	struct process *p = &process;
+	if (signo != SIGTERM)
+		return;
+	term(p);
+}
+
+static int init_signal(const struct process *restrict p)
+{
+	struct sigaction sa = {
+		.sa_flags	= SA_SIGINFO,
+		.sa_sigaction	= term_action,
+	};
+	int ret;
+
+	ret = sigemptyset(&sa.sa_mask);
+	if (ret == -1) {
+		perror("sigemptyset");
+		return -1;
+	}
+	ret = sigaddset(&sa.sa_mask, SIGINT);
+	if (ret == -1) {
+		perror("sigaddset(SIGINT)");
+		return -1;
+	}
+	ret = sigaction(SIGTERM, &sa, NULL);
+	if (ret == -1) {
+		perror("sigaction(SIGTERM)");
+		return -1;
+	}
+	ret = sigemptyset(&sa.sa_mask);
+	if (ret == -1) {
+		perror("sigemptyset");
+		return -1;
+	}
+	ret = sigaddset(&sa.sa_mask, SIGTERM);
+	if (ret == -1) {
+		perror("sigaddset(SIGTERM)");
+		return -1;
+	}
+	ret = sigaction(SIGINT, &sa, NULL);
+	if (ret == -1) {
+		perror("sigaction(SIGINT)");
+		return -1;
+	}
+	return 0;
+}
+
 static int init(struct process *p)
 {
 	struct context *ctx = p->ctx;
 	struct sockaddr_nl sa;
 	int ret, efd = -1, sfd = -1;
 
+	ret = init_signal(p);
+	if (ret == -1)
+		return -1;
 	efd = epoll_create1(EPOLL_CLOEXEC);
 	if (efd == -1) {
 		perror("epoll_create1");
@@ -176,13 +231,20 @@ static int handle(struct context *ctx, int nr)
 	return i;
 }
 
-static void term(const struct process *restrict p)
+static void term(struct process *p)
 {
-	const struct context *ctx = p->ctx;
-	if (close(ctx->efd))
-		perror("close");
-	if (close(ctx->sfd))
-		perror("close");
+	struct context *ctx = p->ctx;
+	printf("terminating...\n");
+	if (ctx->efd != -1) {
+		if (close(ctx->efd))
+			perror("close");
+		ctx->efd = -1;
+	}
+	if (ctx->sfd != -1) {
+		if (close(ctx->sfd))
+			perror("close");
+		ctx->sfd = -1;
+	}
 }
 
 int main(int argc, char *const argv[])
