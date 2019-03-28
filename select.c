@@ -79,6 +79,8 @@ static int fetch(struct context *ctx)
 		.tv_sec		= ctx->p->timeout/1000,
 		.tv_usec	= ctx->p->timeout%1000*1000,
 	};
+
+	printf("waiting...\n");
 	/* select(2) requires to reset the fd_set for each call */
 	ctx->rrfds = ctx->rfds;
 	ctx->rwfds = ctx->wfds;
@@ -92,6 +94,7 @@ static int handle(const struct context *restrict ctx, int nr)
 	char buf[BUFSIZ];
 	int i, j;
 
+	printf("handling...\n");
 	if (nr == 0) {
 		printf("select(2) timed out\n");
 		return 0;
@@ -108,6 +111,7 @@ static int handle(const struct context *restrict ctx, int nr)
 					if (len == 0)
 						return 0; /* EOF */
 				}
+				i++;
 			}
 		for (j = 0; j < ctx->nfds; j++)
 			if (FD_ISSET(j, &ctx->rwfds)) {
