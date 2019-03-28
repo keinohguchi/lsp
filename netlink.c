@@ -143,7 +143,7 @@ static int init(struct process *p)
 	struct context *ctx = p->ctx;
 	struct sockaddr_nl sa;
 	int ret, efd = -1, sfd = -1;
-	long sz;
+	long bufsiz;
 
 	efd = epoll_create1(EPOLL_CLOEXEC);
 	if (efd == -1) {
@@ -172,12 +172,13 @@ static int init(struct process *p)
 		perror("epoll_ctl");
 		goto err;
 	}
-	sz = sysconf(_SC_PAGESIZE);
-	if (sz == -1) {
+	bufsiz = sysconf(_SC_PAGESIZE);
+	if (bufsiz == -1) {
 		perror("sysconf");
 		goto err;
 	}
-	ctx->buf = malloc(sz*4); /* PAGESIZE*4 */
+	bufsiz *= 2; /* PAGESIZE*2 */
+	ctx->buf = malloc(bufsiz);
 	if (ctx->buf == NULL) {
 		perror("malloc");
 		goto err;
@@ -192,7 +193,7 @@ static int init(struct process *p)
 	ctx->msg.msg_iov	= &ctx->iov;
 	ctx->msg.msg_iovlen	= 1;
 	ctx->iov.iov_base	= ctx->buf;
-	ctx->iov.iov_len	= sz*4;
+	ctx->iov.iov_len	= bufsiz;
 	ret = init_signal(p);
 	if (ret == -1)
 		goto err;
