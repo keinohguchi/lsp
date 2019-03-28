@@ -3,23 +3,28 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <unistd.h>
 #include <limits.h>
-#include <poll.h>
 #include <getopt.h>
+#include <poll.h>
+#include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 
-static struct process {
-	const char		*progname;
+struct context {
+	const struct process	*p;
+	struct pollfd		fds[1]; /* single file descriptor */
+	nfds_t			nfds;
 	struct msghdr		msg;
 	struct sockaddr_nl	addr;
 	struct iovec		iov;
 	char			buf[8164];
-	struct pollfd		fds;
-	nfds_t			nfds;
+};
+
+static struct process {
+	struct context		ctx[1];	/* single context */
+	const char		*progname;
 	short			timeout;
 	int			type;
 	int			family;
@@ -27,8 +32,7 @@ static struct process {
 	const char		*const opts;
 	const struct option	lopts[];
 } process = {
-	.fds.fd		= -1,
-	.timeout	= -1,
+	.timeout	= 5000, /* ms */
 	.type		= SOCK_RAW,
 	.family		= NETLINK_ROUTE,
 	.group		= RTMGRP_LINK,
@@ -77,6 +81,7 @@ static void usage(const struct process *restrict p, FILE *s, int status)
 
 static int init(struct process *p)
 {
+	struct context *ctx = p->ctx;
 	struct sockaddr_nl sa;
 	int s, ret;
 
@@ -94,16 +99,17 @@ static int init(struct process *p)
 		goto err;
 	}
 	/* initialize the message header */
-	memset(&p->msg, 0, sizeof(p->msg));
-	p->msg.msg_name		= &p->addr;
-	p->msg.msg_namelen	= sizeof(p->addr);
-	p->msg.msg_iov		= &p->iov;
-	p->msg.msg_iovlen	= 1;
-	p->iov.iov_base		= p->buf;
-	p->iov.iov_len		= sizeof(p->buf);
-	p->nfds = sizeof(p->fds)/sizeof(struct pollfd);
-	p->fds.fd = s;
-	p->fds.events = POLLIN;
+	memset(&ctx->msg, 0, sizeof(ctx->msg));
+	ctx->p			= p;
+	ctx->msg.msg_name	= &ctx->addr;
+	ctx->msg.msg_namelen	= sizeof(ctx->addr);
+	ctx->msg.msg_iov	= &ctx->iov;
+	ctx->msg.msg_iovlen	= 1;
+	ctx->iov.iov_base	= ctx->buf;
+	ctx->iov.iov_len	= sizeof(ctx->buf);
+	ctx->nfds		= sizeof(ctx->fds)/sizeof(struct pollfd);
+	ctx->fds[0].fd		= s;
+	ctx->fds[0].events	= POLLIN;
 	return 0;
 err:
 	if (close(s))
@@ -111,44 +117,40 @@ err:
 	return ret;
 }
 
-static const struct msghdr *fetch(struct process *p)
+static int fetch(struct context *ctx)
 {
-	ssize_t len;
-
-	while (1) {
-		int ret = poll(&p->fds, p->nfds, p->timeout);
-		if (ret == -1) {
-			perror("poll");
-			return NULL;
-		}
-		if (ret == 0)
-			return NULL;
-		if (p->fds.revents & POLLIN)
-			break;
-	}
-	len = recvmsg(p->fds.fd, &p->msg, 0);
-	if (len == -1) {
-		perror("recvmsg");
-		return NULL;
-	} else if (len == 0)
-		return NULL;
-	printf("%ld=recvmsg()\n", len);
-	return &p->msg;
+	int timeout = ctx->p->timeout;
+	return poll(ctx->fds, ctx->nfds, timeout);
 }
 
-static int handle(const struct msghdr *restrict msg)
+static int handle(struct context *ctx, int nr)
 {
-	char *buf = msg->msg_iov->iov_base;
-	printf("handling %c...\n", *buf);
-	return 0;
+	int i;
+	for (i = 0; i < ctx->nfds; i++) {
+		if (ctx->fds[i].revents & POLLIN) {
+			ssize_t len = recvmsg(ctx->fds[i].fd, &ctx->msg, 0);
+			if (len == -1)
+				perror("recvmsg");
+			else {
+				printf("%ld=recvmsg()\n", len);
+				if (len == 0)
+					return 0; /* EOF */
+			}
+		}
+		if (ctx->fds[i].revents & ~POLLIN)
+			printf("%d has events(0x%x)\n",
+			       ctx->fds[i].fd, ctx->fds[i].revents&~POLLIN);
+	}
+	return i;
 }
 
 static void term(const struct process *restrict p)
 {
+	const struct context *ctx = p->ctx;
 	const struct pollfd *fd;
 	int i;
 
-	for (i = 0, fd = &p->fds; i < p->nfds; i++, fd++)
+	for (i = 0, fd = ctx->fds; i < ctx->nfds; i++, fd++)
 		if (fd->fd != -1)
 			if (close(fd->fd))
 				perror("close");
@@ -157,8 +159,7 @@ static void term(const struct process *restrict p)
 int main(int argc, char *const argv[])
 {
 	struct process *p = &process;
-	const struct msghdr *msg;
-	int ret, o;
+	int o, ret;
 
 	p->progname = argv[0];
 	optind = 0;
@@ -204,11 +205,13 @@ int main(int argc, char *const argv[])
 	if (ret == -1)
 		return 1;
 
-	/* handle the netlink messages */
-	while ((msg = fetch(p)))
-		if (handle(msg))
+	/* let's roll */
+	while ((ret = fetch(p->ctx)) != -1)
+		if ((ret = handle(p->ctx, ret)) <= 0)
 			break;
 
 	term(p);
+	if (ret)
+		return 1;
 	return 0;
 }
