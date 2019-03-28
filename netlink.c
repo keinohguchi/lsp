@@ -144,9 +144,6 @@ static int init(struct process *p)
 	struct sockaddr_nl sa;
 	int ret, efd = -1, sfd = -1;
 
-	ret = init_signal(p);
-	if (ret == -1)
-		return -1;
 	efd = epoll_create1(EPOLL_CLOEXEC);
 	if (efd == -1) {
 		perror("epoll_create1");
@@ -185,6 +182,9 @@ static int init(struct process *p)
 	ctx->msg.msg_iovlen	= 1;
 	ctx->iov.iov_base	= ctx->buf;
 	ctx->iov.iov_len	= sizeof(ctx->buf);
+	ret = init_signal(p);
+	if (ret == -1)
+		goto err;
 	return 0;
 err:
 	if (sfd != -1)
