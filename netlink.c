@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
+#include <linux/if.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 
@@ -216,10 +217,68 @@ static int fetch(struct context *ctx)
 	return epoll_wait(ctx->efd, ctx->events, nr, timeout);
 }
 
+static char *ifflags(unsigned flags)
+{
+	const struct flag {
+		unsigned	flag;
+		const char	*name;
+	} *n, names[] = {
+		{IFF_UP,		"UP"},
+		{IFF_BROADCAST,		"BROADCAST"},
+		{IFF_DEBUG,		"DEBUG"},
+		{IFF_LOOPBACK,		"LOOPBACK"},
+		{IFF_POINTOPOINT,	"POINTOPOINT"},
+		{IFF_NOARP,		"NOARP"},
+		{IFF_PROMISC,		"PROMISC"},
+		{IFF_NOTRAILERS,	"NOTRAILERS"},
+		{IFF_ALLMULTI,		"ALLMULTI"},
+		{IFF_MASTER,		"MASTER"},
+		{IFF_SLAVE,		"SLAVE"},
+		{IFF_MULTICAST,		"MULTICAST"},
+		{IFF_PORTSEL,		"PORTSEL"},
+		{IFF_AUTOMEDIA,		"AUTOMEDIA"},
+		{IFF_DYNAMIC,		"DYNAMIC"},
+		{IFF_LOWER_UP,		"LOWER_UP"},
+		{IFF_DORMANT,		"DORMANT"},
+		{IFF_ECHO,		"ECHO"},
+		{.name = NULL},
+	};
+	char *ptr, *buf = malloc(LINE_MAX);
+	size_t len;
+
+	if (buf == NULL)
+		return NULL;
+	len = LINE_MAX;
+	ptr = buf;
+	for (n = names; n->name; n++) {
+		if (flags & n->flag) {
+			int nr = snprintf(ptr, len-1, "%s%s",
+					  ptr == buf ? "" : ",",
+					  n->name);
+			if (nr > 0) {
+				ptr += nr;
+				len -= nr;
+			}
+			if (len <= 0)
+				break;
+		}
+	}
+	return buf;
+}
+
 static int handle_ifinfomsg(struct context *ctx, const struct ifinfomsg *restrict ifi)
 {
-	printf("ifi_family=%d,ifi_type=%hd,ifi_index=%d,ifi_flags=0x%08x,ifi_change=0x%08x\n",
-	       ifi->ifi_family, ifi->ifi_type, ifi->ifi_index, ifi->ifi_flags, ifi->ifi_change);
+	char *flags = ifflags(ifi->ifi_flags);
+	if (flags == NULL) {
+		printf("family=%d,type=%hd,index=%d,flags=0x%08x,change=0x%08x\n",
+		       ifi->ifi_family, ifi->ifi_type, ifi->ifi_index,
+		       ifi->ifi_flags, ifi->ifi_change);
+		return 0;
+	}
+	printf("family=%d,type=%hd,index=%d,flags=%s,change=0x%08x\n",
+	       ifi->ifi_family, ifi->ifi_type, ifi->ifi_index, flags,
+	       ifi->ifi_change);
+	free(flags);
 	return 0;
 }
 
