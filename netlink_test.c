@@ -50,6 +50,11 @@ int main(void)
 			.want	= 0,
 		},
 		{
+			.name	= "iface option success",
+			.argv	= {target, "-i", "lo", "-t", "1", NULL},
+			.want	= 0,
+		},
+		{
 			.name	= "iface option failure",
 			.argv	= {target, "-i", "nonExistInterface", NULL},
 			.want	= 1,

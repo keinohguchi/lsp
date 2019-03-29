@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0
-PROGS := writev
-PROGS += select
+PROGS := select
 PROGS += poll
+PROGS += writev
 PROGS += epoll
 PROGS += inode
 PROGS += block

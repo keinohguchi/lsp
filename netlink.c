@@ -147,17 +147,29 @@ static int init_signal(const struct process *restrict p)
 	return 0;
 }
 
-static int init_ifindex(int s, const char *restrict iface)
+static int init_ifindex(const char *restrict iface)
 {
 	struct ifreq ifr;
-	int ret;
+	int sfd, ret;
 
-	strcpy(ifr.ifr_name, iface);
-	ret = ioctl(s, SIOCGIFINDEX, &ifr);
-	if (ret == -1) {
-		perror("ioctl");
+	/* create AF_INET socket as older linux kernel
+	 * AF_NETLINK doesn't support ioctl() */
+	sfd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (sfd == -1) {
+		perror("socket");
 		return -1;
 	}
+	strcpy(ifr.ifr_name, iface);
+	ret = ioctl(sfd, SIOCGIFINDEX, &ifr);
+	if (ret == -1) {
+		perror("ioctl");
+		goto out;
+	}
+out:
+	if (close(sfd))
+		perror("close");
+	if (ret)
+		return ret;
 	return ifr.ifr_ifindex;
 }
 
@@ -165,14 +177,22 @@ static int init(struct process *p)
 {
 	struct context *ctx = p->ctx;
 	struct sockaddr_nl sa;
-	int ifindex = -1;
 	int ret, efd = -1, sfd = -1;
+	int ifindex;
 	long bufsiz;
 
 	efd = epoll_create1(EPOLL_CLOEXEC);
 	if (efd == -1) {
 		perror("epoll_create1");
 		return -1;
+	}
+	if (!p->iface)
+		ifindex = -1;
+	else {
+		ret = init_ifindex(p->iface);
+		if (ret == -1)
+			goto err;
+		ifindex = ret;
 	}
 	sfd = socket(AF_NETLINK, p->type, p->family);
 	if (sfd == -1) {
@@ -186,12 +206,6 @@ static int init(struct process *p)
 	if (ret == -1) {
 		perror("bind");
 		goto err;
-	}
-	if (p->iface) {
-		ret = init_ifindex(sfd, p->iface);
-		if (ret == -1)
-			goto err;
-		ifindex = ret;
 	}
 	ctx->ifindex			= ifindex;
 	ctx->events[0].events		= EPOLLIN;
