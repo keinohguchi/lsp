@@ -5,6 +5,7 @@
 #include <strings.h>
 #include <limits.h>
 #include <getopt.h>
+#include <unistd.h>
 
 struct client {
 	char			buf[LINE_MAX];
@@ -48,6 +49,8 @@ static void usage(const struct process *restrict p, FILE *s, int status)
 
 static int is_print_prompt(const struct process *restrict p)
 {
+	if (!isatty(STDOUT_FILENO))
+	    return 0;
 	return p->prompt[0] != '\0';
 }
 
@@ -91,6 +94,7 @@ static void term(const struct process *restrict p)
 int main(int argc, char *const argv[])
 {
 	struct process *const p = &process;
+	struct client *ctx;
 	const char *cmd;
 	int o, ret;
 
@@ -110,8 +114,9 @@ int main(int argc, char *const argv[])
 	ret = init(p);
 	if (ret == -1)
 		return 1;
-	while ((cmd = fetch(p->client)))
-		if ((ret = handle(p->client, cmd)) <= 0)
+	ctx = p->client;
+	while ((cmd = fetch(ctx)))
+		if ((ret = handle(ctx, cmd)) <= 0)
 			break;
 	term(p);
 	if (ret)
