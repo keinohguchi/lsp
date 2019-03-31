@@ -4,9 +4,9 @@ a.out
 *.~
 cscope.*
 liblsp.a
-writev
 select
 poll
+writev
 epoll
 inode
 block
@@ -28,6 +28,7 @@ time
 find
 id
 sh
+client
 server
 httpd
 netlink

@@ -23,6 +23,7 @@ PROGS += time
 PROGS += find
 PROGS += id
 PROGS += sh
+PROGS += client
 PROGS += server
 PROGS += httpd
 PROGS += netlink
