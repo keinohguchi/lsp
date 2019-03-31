@@ -59,15 +59,20 @@ static void prompt(const struct process *restrict p)
 
 static char *fetch(struct client *ctx)
 {
+	char *cmdline;
 	prompt(ctx->p);
-	return fgets(ctx->buf, sizeof(ctx->buf), stdin);
+	cmdline = fgets(ctx->buf, sizeof(ctx->buf), stdin);
+	if (cmdline == NULL)
+		return NULL;
+	cmdline[strlen(cmdline)-1] = '\0'; /* drop newline */
+	return cmdline;
 }
 
 static int handle(struct client *ctx, const char *cmdline)
 {
-	if (!strncasecmp(cmdline, "quit", strlen(cmdline)-1))
+	if (!strncasecmp(cmdline, "quit", strlen(cmdline)))
 		return 0;
-	printf("%s", cmdline);
+	printf("%s\n", cmdline);
 	return 1;
 }
 
