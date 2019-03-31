@@ -98,102 +98,6 @@ static void usage(const struct process *restrict p, FILE *stream, int status)
 	exit(status);
 }
 
-static void server_timeout_action(int signo, siginfo_t *si, void *tcontext)
-{
-	if (signo != SIGALRM)
-		return;
-	printf("server[%d]: timedout\n", getpid());
-	exit(EXIT_SUCCESS);
-}
-
-static int init_server_signal(const struct process *restrict p)
-{
-	struct sigaction sa = {
-		.sa_flags	= SA_SIGINFO,
-		.sa_sigaction	= server_timeout_action,
-	};
-	int ret;
-
-	/* nothing to do in case of no timeout */
-	if (p->timeout == -1)
-		return 0;
-
-	/* for SIGALRM */
-	ret = sigemptyset(&sa.sa_mask);
-	if (ret == -1) {
-		perror("sigemptyset");
-		return ret;
-	}
-	ret = sigaction(SIGALRM, &sa, NULL);
-	if (ret == -1) {
-		perror("sigaction(SIGALRM)");
-		return ret;
-	}
-	return 0;
-}
-
-static int init_server_timer(const struct process *restrict p)
-{
-	const struct itimerval it = {
-		.it_value = {
-			.tv_sec		= p->timeout/1000,
-			.tv_usec	= p->timeout%1000*1000,
-		},
-		.it_interval = {0, 0},
-	};
-	int ret;
-
-	/* arm the new timer */
-	ret = setitimer(ITIMER_REAL, &it, NULL);
-	if (ret == -1) {
-		perror("setitimer");
-		return -1;
-	}
-	return 0;
-}
-
-static int reset_server_timer(const struct process *restrict p)
-{
-	const struct itimerval zero = {
-		.it_value	= {0, 0},
-		.it_interval	= {0, 0},
-	};
-	sigset_t mask;
-	int ret;
-
-	if (!p->timeout)
-		return 1;
-
-	ret = sigemptyset(&mask);
-	if (ret == -1) {
-		perror("sigemptymask");
-		return -1;
-	}
-	ret = sigaddset(&mask, SIGALRM);
-	if (ret == -1) {
-		perror("sigaddset");
-		return -1;
-	}
-	ret = sigprocmask(SIG_BLOCK, &mask, NULL);
-	if (ret == -1) {
-		perror("sigprocmask");
-		return -1;
-	}
-	/* reset the timer */
-	ret = setitimer(ITIMER_REAL, &zero, NULL);
-	if (ret == -1) {
-		perror("setitimer");
-		/* ignore the error */
-	}
-	init_server_timer(p);
-	ret = sigprocmask(SIG_UNBLOCK, &mask, NULL);
-	if (ret == -1) {
-		perror("sigprocmask");
-		return -1;
-	}
-	return 0;
-}
-
 static int init_server_socket(struct server *ctx)
 {
 	const struct process *const p = ctx->p;
@@ -234,6 +138,17 @@ err:
 	return ret;
 }
 
+static int reset_timer(const struct process *restrict p)
+{
+	const union sigval val = {.sival_int = getpid()};
+	int ret = sigqueue(getppid(), SIGUSR1, val);
+	if (ret == -1) {
+		perror("sigqueue");
+		return -1;
+	}
+	return 0;
+}
+
 static void dump(FILE *s, const unsigned char *restrict buf, size_t len)
 {
 	int i, j, width = 16;
@@ -265,12 +180,6 @@ static void *server(void *arg)
 	ssize_t len;
 	int ret;
 
-	ret = init_server_signal(p);
-	if (ret == -1)
-		return (void *)EXIT_FAILURE;
-	ret = init_server_timer(p);
-	if (ret == -1)
-		return (void *)EXIT_FAILURE;
 	ret = init_server_socket(ctx);
 	if (ret == -1)
 		return (void *)EXIT_FAILURE;
@@ -311,7 +220,7 @@ again:
 				perror("shutdown");
 			continue;
 		}
-		reset_server_timer(p);
+		reset_timer(p);
 		dump(p->output, (unsigned char *)buf, len);
 		len = send(c, buf, len, 0);
 		if (len == -1) {
@@ -337,7 +246,6 @@ static int init_server(struct process *p)
 	}
 	s = p->ss = ss;
 	for (i = 0; i < p->concurrent; i++) {
-		s->sd = -1;
 		s->p = p;
 		s->pid = fork();
 		if (s->pid == -1) {
@@ -368,6 +276,103 @@ err:
 			perror("waitpid");
 	}
 	return -1;
+}
+
+static void timeout_action(int signo, siginfo_t *si, void *tcontext)
+{
+	const struct process *const p = &process;
+	struct server *s;
+	int i;
+
+	if (signo != SIGALRM)
+		return;
+	printf("terminating servers\n");
+	s = p->ss;
+	for (i = 0, s = p->ss; i < p->concurrent; i++, s++) {
+		int ret, status;
+		if (s->pid == -1)
+			continue;
+		ret = kill(s->pid, SIGTERM);
+		if (ret == -1) {
+			perror("kill");
+			continue;
+		}
+		ret = waitpid(s->pid, &status, WNOHANG);
+		if (ret == -1)
+			perror("waitpid");
+	}
+	exit(EXIT_SUCCESS);
+}
+
+static int init_timer(const struct process *restrict p)
+{
+	const struct itimerval it = {
+		.it_value = {
+			.tv_sec		= p->timeout/1000,
+			.tv_usec	= p->timeout%1000*1000,
+		},
+		.it_interval = {0, 0},
+	};
+	int ret;
+
+	/* arm the new timer */
+	ret = setitimer(ITIMER_REAL, &it, NULL);
+	if (ret == -1) {
+		perror("setitimer");
+		return -1;
+	}
+	return 0;
+}
+
+static void reset_timer_action(int signo, siginfo_t *si, void *tcontext)
+{
+	init_timer(&process);
+}
+
+static int init_signal(const struct process *restrict p)
+{
+	struct sigaction sa = {.sa_flags = SA_SIGINFO};
+	int ret;
+
+	/* nothing to do in case of no timeout */
+	if (p->timeout == -1)
+		return 0;
+
+	/* for SIGALRM */
+	ret = sigemptyset(&sa.sa_mask);
+	if (ret == -1) {
+		perror("sigemptyset");
+		return ret;
+	}
+	ret = sigaddset(&sa.sa_mask, SIGUSR1);
+	if (ret == -1) {
+		perror("sigaddset(SIGUSR1)");
+		return ret;
+	}
+	sa.sa_sigaction = timeout_action;
+	ret = sigaction(SIGALRM, &sa, NULL);
+	if (ret == -1) {
+		perror("sigaction(SIGALRM)");
+		return ret;
+	}
+	/* for SIGUSR1 */
+	ret = sigemptyset(&sa.sa_mask);
+	if (ret == -1) {
+		perror("sigemptyset");
+		return ret;
+	}
+	ret = sigaddset(&sa.sa_mask, SIGALRM);
+	if (ret == -1) {
+		perror("sigaddset(SIGALRM)");
+		return ret;
+	}
+	sa.sa_sigaction = reset_timer_action;
+	ret = sigaction(SIGUSR1, &sa, NULL);
+	if (ret == -1) {
+		perror("sigaction(SIGUSR1)");
+		return ret;
+	}
+	return 0;
 }
 
 static int init_daemon(const struct process *restrict p)
@@ -423,81 +428,17 @@ err:
 	return ret;
 }
 
-static void child_action(int signo, siginfo_t *si, void *context)
-{
-	struct process *p = &process;
-	struct server *s;
-	int ret, status;
-	int i;
-
-	printf("server[%d]: signal %s\n", si->si_pid, strsignal(signo));
-	if (signo != SIGCHLD)
-		return;
-	ret = waitpid(si->si_pid, &status, 0);
-	if (ret == -1) {
-		perror("waitpid");
-		return;
-	}
-	/* we need to take care of other childs, as the standard signals,
-	 * including SIGCHLD, won't be queued and might be dropped while
-	 * hanling here. */
-	for (i = 0, s = p->ss; i < p->concurrent && s; i++, s++) {
-		if (s->pid == -1)
-			continue;
-		else if (s->pid == si->si_pid) {
-			/* taken care of it in above */
-			s->pid = -1;
-			continue;
-		}
-		ret = waitpid(s->pid, &status, WNOHANG);
-		if (ret == -1) {
-			perror("waitpid");
-			continue;
-		}
-		if (!WIFEXITED(status)) {
-			const union sigval val = {.sival_int = getpid()};
-			ret = sigqueue(s->pid, SIGTERM, val);
-			if (ret == -1) {
-				perror("sigqueue");
-				continue;
-			}
-			ret = waitpid(s->pid, &status, WNOHANG);
-			if (ret == -1) {
-				perror("waitpid");
-				continue;
-			}
-		}
-		/* just reset the pid for now */
-		s->pid = -1;
-	}
-	fprintf(stderr, "done\n");
-	_exit(EXIT_SUCCESS);
-}
-
-static int init_signal(const struct process *restrict p)
-{
-	const struct sigaction sa = {
-		.sa_flags	= SA_SIGINFO,
-		.sa_sigaction	= child_action,
-	};
-	int ret;
-
-	ret = sigaction(SIGCHLD, &sa, NULL);
-	if (ret == -1) {
-		perror("sigaction(SIGCHLD)");
-		return -1;
-	}
-	return 0;
-}
-
 static int init(struct process *p)
 {
 	int ret;
 
+	ret = init_server(p);
+	if (ret == -1)
+		return ret;
 	ret = init_signal(p);
 	if (ret == -1)
 		return ret;
-	ret = init_server(p);
+	ret = init_timer(p);
 	if (ret == -1)
 		return ret;
 	return init_daemon(p);
