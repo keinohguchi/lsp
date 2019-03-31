@@ -141,7 +141,13 @@ err:
 static int reset_timer(const struct process *restrict p)
 {
 	const union sigval val = {.sival_int = getpid()};
-	int ret = sigqueue(getppid(), SIGUSR1, val);
+	int ret;
+
+	/* no timer */
+	if (p->timeout == -1)
+		return 0;
+
+	ret = sigqueue(getppid(), SIGUSR1, val);
 	if (ret == -1) {
 		perror("sigqueue");
 		return -1;
@@ -315,6 +321,10 @@ static int init_timer(const struct process *restrict p)
 	};
 	int ret;
 
+	/* no timer */
+	if (p->timeout == -1)
+		return 0;
+
 	/* arm the new timer */
 	ret = setitimer(ITIMER_REAL, &it, NULL);
 	if (ret == -1) {
@@ -334,7 +344,7 @@ static int init_signal(const struct process *restrict p)
 	struct sigaction sa = {.sa_flags = SA_SIGINFO};
 	int ret;
 
-	/* nothing to do in case of no timeout */
+	/* no timer */
 	if (p->timeout == -1)
 		return 0;
 
@@ -479,7 +489,7 @@ int main(int argc, char *const argv[])
 		switch (o) {
 		case 't':
 			val = strtol(optarg, NULL, 10);
-			if (val < 0 || val >= LONG_MAX)
+			if (val < -1 || val >= LONG_MAX)
 				usage(p, stderr, EXIT_FAILURE);
 			p->timeout = val;
 			break;
