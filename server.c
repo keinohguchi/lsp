@@ -14,6 +14,7 @@
 #include <sys/time.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
+#include <sys/sysinfo.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
@@ -22,9 +23,9 @@
 #endif /* NR_OPEN */
 
 struct server {
-	const struct process	*p;
 	pid_t			pid;
 	int			sd;
+	const struct process	*p;
 };
 
 static struct process {
@@ -482,6 +483,7 @@ int main(int argc, char *const argv[])
 	struct process *p = &process;
 	int ret, o;
 
+	p->concurrent = get_nprocs();
 	p->progname = argv[0];
 	p->output = stdout;
 	while ((o = getopt_long(argc, argv, p->opts, p->lopts, NULL)) != -1) {
