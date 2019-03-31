@@ -215,6 +215,7 @@ static void *server(void *arg)
 				perror("shutdown");
 			continue;
 		}
+		reset_timer(p);
 again:
 		len = recv(c, buf, sizeof(buf), 0);
 		if (len == -1) {
