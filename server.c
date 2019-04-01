@@ -179,30 +179,33 @@ static void dump(FILE *s, const unsigned char *restrict buf, size_t len)
 static int handle(struct server *ctx, char *const cmdline,
 		  struct sockaddr *sa, socklen_t slen)
 {
-	int ret, status;
+	const struct process *const p = ctx->p;
+	const char *msg = "internal server error\n\0";
+	int ret, status, fd = -1;
+	char buf[LINE_MAX];
 	pid_t pid;
 
+	/* send response back over the UDP socket */
+	fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (fd == -1) {
+		perror("socket");
+		return -1;
+	}
+	ret = connect(fd, sa, slen);
+	if (ret == -1) {
+		perror("connect");
+		if (close(fd))
+			perror("close");
+		goto out;
+	}
+	ret = -1;
 	pid = fork();
 	if (pid == -1) {
 		perror("fork");
-		return -1;
+		goto out;
 	} else if (pid == 0) {
 		char *const argv[2] = {cmdline, NULL};
-		int fd;
 
-		/* send response back over the UDP socket */
-		fd = socket(AF_INET, SOCK_DGRAM, 0);
-		if (fd == -1) {
-			perror("socket");
-			exit(EXIT_FAILURE);
-		}
-		ret = connect(fd, sa, slen);
-		if (ret == -1) {
-			perror("connect");
-			if (close(fd))
-				perror("close");
-			exit(EXIT_FAILURE);
-		}
 		ret = dup2(fd, STDOUT_FILENO);
 		if (ret == -1) {
 			perror("dup2");
@@ -217,24 +220,45 @@ static int handle(struct server *ctx, char *const cmdline,
 	}
 	ret = waitpid(pid, &status, 0);
 	if (ret == -1) {
-		perror("waitpid");
-		return -1;
+		msg = strerror(errno);
+		goto err;
 	}
+	ret = -1;
 	if (WIFSIGNALED(status)) {
-		fprintf(stderr, "child terminated by signale(%s)\n",
-			strsignal(WTERMSIG(status)));
-		return -1;
+		ret = snprintf(buf, sizeof(buf), "child terminated by signale(%s)\n",
+			       strsignal(WTERMSIG(status)));
+		if (ret < 0)
+			goto err;
+		msg = buf;
+		goto err;
 	}
 	if (!WIFEXITED(status)) {
-		fprintf(stderr, "child did not exit successfully\n");
-		return -1;
+		ret = snprintf(buf, sizeof(buf), "child did not exit successfully\n");
+		if (ret < 0)
+			goto err;
+		msg = buf;
+		goto err;
 	}
 	if (WEXITSTATUS(status) != 0) {
-		fprintf(stderr, "child exit with exit status(%d)\n",
-			WEXITSTATUS(status));
-		return -1;
+		ret = snprintf(buf, sizeof(buf), "child exit with exit status(%d)\n",
+			       WEXITSTATUS(status));
+		if (ret < 0)
+			goto err;
+		msg = buf;
+		goto err;
 	}
-	return 0;
+	ret = 0;
+	goto out;
+err:
+	fprintf(p->output, msg);
+	ret = send(fd, msg, strlen(msg)+1, 0);
+	if (ret == -1)
+		perror("send");
+out:
+	if (fd != -1)
+		if (close(fd))
+			perror("close");
+	return ret;
 }
 
 static void *server(void *arg)
