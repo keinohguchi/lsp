@@ -21,8 +21,8 @@ static struct process {
 	struct client		client[1];		/* single client */
 	const char		*prompt;
 	int			port;
-	struct sockaddr_storage	sa;
 	socklen_t		salen;
+	struct sockaddr_storage	ss;
 	const char		*progname;
 	const char		*const opts;
 	const struct option	lopts[];
@@ -31,8 +31,8 @@ static struct process {
 	.progname	= NULL,
 	.prompt		= "client",
 	.port		= 9999,
-	.sa.ss_family	= AF_UNSPEC,
 	.salen		= -1,
+	.ss.ss_family	= AF_UNSPEC,
 	.opts		= "h",
 	.lopts		= {
 		{"help",	no_argument,		NULL,	'h'},
@@ -83,11 +83,43 @@ static char *fetch(struct client *ctx)
 	return cmdline;
 }
 
+static int connect_server(struct client *ctx, const char *cmdline)
+{
+	const struct process *const p = ctx->p;
+	struct sockaddr *sa = (struct sockaddr *)&p->ss;
+	int ret, sd = -1;
+
+	sd = socket(sa->sa_family, SOCK_STREAM, 0);
+	if (sd == -1) {
+		perror("socket");
+		return -1;
+	}
+	ret = connect(sd, sa, p->salen);
+	if (ret == -1) {
+		perror("connect");
+		goto err;
+	}
+	ctx->sd = sd;
+	return 0;
+err:
+	if (sd != -1)
+		if (close(sd))
+			perror("close");
+	return -1;
+}
+
 static int handle(struct client *ctx, const char *cmdline)
 {
+	int ret;
+
 	if (!strncasecmp(cmdline, "quit", strlen(cmdline)))
 		return 0;
-	printf("%s\n", cmdline);
+	ret = connect_server(ctx, cmdline);
+	if (ret == -1)
+		return -1;
+	if (close(ctx->sd))
+		perror("close");
+	ctx->sd = -1;
 	return 1;
 }
 
@@ -106,12 +138,12 @@ static int init_address(struct process *p, const char *addr)
 			*colon = '\0';
 		}
 	}
-	sin4 = (struct sockaddr_in *)&p->sa;
+	sin4 = (struct sockaddr_in *)&p->ss;
 	ret = inet_pton(AF_INET, addr, &sin4->sin_addr);
 	if (ret == 1) {
 		p->salen = sizeof(struct sockaddr_in);
-		p->sa.ss_family = AF_INET;
-		sin4->sin_port = port;
+		sin4->sin_family = AF_INET;
+		sin4->sin_port = htons(port);
 		return 0;
 	}
 	/* No IPv6 support yet */
