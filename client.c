@@ -163,7 +163,10 @@ static int handle(struct client *ctx, const char *cmdline)
 	ssize_t len;
 	int ret;
 
-	if (!strncasecmp(cmdline, "quit", strlen(cmdline)))
+
+	if (strlen(cmdline) == 0)
+		return 1;
+	else if (!strncasecmp(cmdline, "quit", strlen(cmdline)))
 		return 0;
 	ret = connect_server(ctx, cmdline);
 	if (ret == -1)
