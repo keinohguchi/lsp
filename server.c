@@ -176,6 +176,67 @@ static void dump(FILE *s, const unsigned char *restrict buf, size_t len)
 	}
 }
 
+static int handle(struct server *ctx, char *const cmdline,
+		  struct sockaddr *sa, socklen_t slen)
+{
+	int ret, status;
+	pid_t pid;
+
+	pid = fork();
+	if (pid == -1) {
+		perror("fork");
+		return -1;
+	} else if (pid == 0) {
+		char *const argv[2] = {cmdline, NULL};
+		int fd;
+
+		/* send response back over the UDP socket */
+		fd = socket(AF_INET, SOCK_DGRAM, 0);
+		if (fd == -1) {
+			perror("socket");
+			exit(EXIT_FAILURE);
+		}
+		ret = connect(fd, sa, slen);
+		if (ret == -1) {
+			perror("connect");
+			if (close(fd))
+				perror("close");
+			exit(EXIT_FAILURE);
+		}
+		ret = dup2(fd, STDOUT_FILENO);
+		if (ret == -1) {
+			perror("dup2");
+			exit(EXIT_FAILURE);
+		}
+		ret = execvp(argv[0], argv);
+		if (ret == -1) {
+			perror("execvp");
+			exit(EXIT_FAILURE);
+		}
+		/* not reachable */
+	}
+	ret = waitpid(pid, &status, 0);
+	if (ret == -1) {
+		perror("waitpid");
+		return -1;
+	}
+	if (WIFSIGNALED(status)) {
+		fprintf(stderr, "child terminated by signale(%s)\n",
+			strsignal(WTERMSIG(status)));
+		return -1;
+	}
+	if (!WIFEXITED(status)) {
+		fprintf(stderr, "child did not exit successfully\n");
+		return -1;
+	}
+	if (WEXITSTATUS(status) != 0) {
+		fprintf(stderr, "child exit with exit status(%d)\n",
+			WEXITSTATUS(status));
+		return -1;
+	}
+	return 0;
+}
+
 static void *server(void *arg)
 {
 	struct server *ctx = arg;
@@ -191,6 +252,7 @@ static void *server(void *arg)
 	if (ret == -1)
 		return (void *)EXIT_FAILURE;
 	for (;;) {
+		fprintf(p->output, "accepting...\n");
 		int c = accept(ctx->sd, &sin, &slen);
 		if (c == -1) {
 			perror("accept");
@@ -208,7 +270,6 @@ static void *server(void *arg)
 				perror("shutdown");
 			continue;
 		}
-		fprintf(p->output, buf);
 		reset_timer(p);
 		len = recv(c, buf, sizeof(buf), 0);
 		if (len == -1) {
@@ -228,25 +289,9 @@ static void *server(void *arg)
 			perror("shutdown");
 			continue;
 		}
-		/* send response over the UDP socket */
-		c = socket(AF_INET, SOCK_DGRAM, 0);
-		if (c == -1) {
-			perror("socket");
-			continue;
-		}
+		/* Use the same port for the response */
 		sin.sin_port = htons(p->port);
-		ret = connect(c, (struct sockaddr *)&sin, slen);
-		if (ret == -1) {
-			perror("connect");
-			if (close(c))
-				perror("close");
-			continue;
-		}
-		ret = send(c, buf, len, 0);
-		if (ret == -1)
-			perror("sendto");
-		if (close(c))
-			perror("close");
+		handle(ctx, buf, (struct sockaddr *)&sin, slen);
 	}
 	return NULL;
 }

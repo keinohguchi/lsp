@@ -156,7 +156,6 @@ static ssize_t print_response(struct client *ctx)
 		if (rem == 0)
 			break;
 	}
-	putchar('\n');
 	return 0;
 }
 
