@@ -210,7 +210,6 @@ static void *server(void *arg)
 		}
 		fprintf(p->output, buf);
 		reset_timer(p);
-again:
 		len = recv(c, buf, sizeof(buf), 0);
 		if (len == -1) {
 			perror("recv");
@@ -224,14 +223,30 @@ again:
 		}
 		reset_timer(p);
 		dump(p->output, (unsigned char *)buf, len);
-		len = send(c, buf, len, 0);
-		if (len == -1) {
-			perror("write");
-			if (shutdown(c, SHUT_RDWR))
-				perror("shutdown");
+		ret = shutdown(c, SHUT_RDWR);
+		if (ret == -1) {
+			perror("shutdown");
 			continue;
 		}
-		goto again;
+		/* send response over the UDP socket */
+		c = socket(AF_INET, SOCK_DGRAM, 0);
+		if (c == -1) {
+			perror("socket");
+			continue;
+		}
+		sin.sin_port = htons(p->port);
+		ret = connect(c, (struct sockaddr *)&sin, slen);
+		if (ret == -1) {
+			perror("connect");
+			if (close(c))
+				perror("close");
+			continue;
+		}
+		ret = send(c, buf, len, 0);
+		if (ret == -1)
+			perror("sendto");
+		if (close(c))
+			perror("close");
 	}
 	return NULL;
 }
@@ -519,9 +534,14 @@ int main(int argc, char *const argv[])
 	if (ret == -1)
 		goto out;
 
-	/* inifinite loop for now */
-	while (1)
-		pause();
+	for (;;) {
+		ret = pause();
+		if (ret == -1) {
+			if (errno == EINTR)
+				continue;
+			perror("pause");
+		}
+	}
 out:
 	term(p);
 	if (ret)

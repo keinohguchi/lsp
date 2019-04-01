@@ -13,7 +13,7 @@
 
 struct client {
 	char			buf[LINE_MAX];
-	int			sd;
+	int			wfd;
 	const struct process	*p;
 };
 
@@ -22,17 +22,21 @@ static struct process {
 	const char		*prompt;
 	int			port;
 	socklen_t		salen;
-	struct sockaddr_storage	ss;
+	struct sockaddr_storage	ssa;
+	struct sockaddr_storage	csa;
+	int			rfd;
 	const char		*progname;
 	const char		*const opts;
 	const struct option	lopts[];
 } process = {
-	.client[0].sd	= -1,
-	.progname	= NULL,
+	.client[0].wfd	= -1,
 	.prompt		= "client",
 	.port		= 9999,
 	.salen		= -1,
-	.ss.ss_family	= AF_UNSPEC,
+	.ssa.ss_family	= AF_UNSPEC,
+	.csa.ss_family	= AF_UNSPEC,
+	.rfd		= -1,
+	.progname	= NULL,
 	.opts		= "h",
 	.lopts		= {
 		{"help",	no_argument,		NULL,	'h'},
@@ -86,24 +90,24 @@ static char *fetch(struct client *ctx)
 static int connect_server(struct client *ctx, const char *cmdline)
 {
 	const struct process *const p = ctx->p;
-	struct sockaddr *sa = (struct sockaddr *)&p->ss;
-	int ret, sd = -1;
+	struct sockaddr *sa = (struct sockaddr *)&p->ssa;
+	int ret, wfd = -1;
 
-	sd = socket(sa->sa_family, SOCK_STREAM, 0);
-	if (sd == -1) {
+	wfd = socket(sa->sa_family, SOCK_STREAM, 0);
+	if (wfd == -1) {
 		perror("socket");
 		return -1;
 	}
-	ret = connect(sd, sa, p->salen);
+	ret = connect(wfd, sa, p->salen);
 	if (ret == -1) {
 		perror("connect");
 		goto err;
 	}
-	ctx->sd = sd;
+	ctx->wfd = wfd;
 	return 0;
 err:
-	if (sd != -1)
-		if (close(sd))
+	if (wfd != -1)
+		if (close(wfd))
 			perror("close");
 	return -1;
 }
@@ -113,10 +117,10 @@ static ssize_t send_command(struct client *ctx, const char *cmdline)
 	ssize_t rem;
 	char *buf;
 
-	rem = strlen(cmdline)+1; /* null */
+	rem = strlen(cmdline)+1; /* include null charater */
 	buf = (char *)cmdline;
 	while (rem > 0) {
-		ssize_t len = send(ctx->sd, buf, rem, 0);
+		ssize_t len = send(ctx->wfd, buf, rem, 0);
 		if (len == -1) {
 			perror("send");
 			return -1;
@@ -125,6 +129,35 @@ static ssize_t send_command(struct client *ctx, const char *cmdline)
 		buf += len;
 	}
 	return rem;
+}
+
+static ssize_t print_response(struct client *ctx)
+{
+	const struct process *const p = ctx->p;
+	size_t bufsiz = sizeof(ctx->buf);
+	ssize_t rem, len;
+	char *buf;
+
+	len = recv(p->rfd, ctx->buf, bufsiz, 0);
+	if (len == -1) {
+		perror("recv");
+		return -1;
+	}
+	buf = ctx->buf;
+	rem = len;
+	for (;;) {
+		len = write(STDOUT_FILENO, buf, rem);
+		if (len == -1) {
+			perror("write");
+			return -1;
+		}
+		rem -= len;
+		buf += len;
+		if (rem == 0)
+			break;
+	}
+	putchar('\n');
+	return 0;
 }
 
 static int handle(struct client *ctx, const char *cmdline)
@@ -140,10 +173,14 @@ static int handle(struct client *ctx, const char *cmdline)
 	len = send_command(ctx, cmdline);
 	if (len == -1)
 		goto out;
+	len = print_response(ctx);
+	if (len == -1)
+		goto out;
 out:
-	if (close(ctx->sd))
-		perror("close");
-	ctx->sd = -1;
+	if (ctx->wfd != -1)
+		if (shutdown(ctx->wfd, SHUT_RDWR))
+			perror("shutdown");
+	ctx->wfd = -1;
 	return 1;
 }
 
@@ -162,15 +199,44 @@ static int init_address(struct process *p, const char *addr)
 			*colon = '\0';
 		}
 	}
-	sin4 = (struct sockaddr_in *)&p->ss;
+	sin4 = (struct sockaddr_in *)&p->ssa;
 	ret = inet_pton(AF_INET, addr, &sin4->sin_addr);
 	if (ret == 1) {
+		/* server side */
 		p->salen = sizeof(struct sockaddr_in);
 		sin4->sin_family = AF_INET;
 		sin4->sin_port = htons(port);
+		/* client side */
+		memcpy(&p->csa, &p->ssa, sizeof(p->csa));
+		sin4 = (struct sockaddr_in *)&p->csa;
+		sin4->sin_addr.s_addr = 0;
 		return 0;
 	}
 	/* No IPv6 support yet */
+	return -1;
+}
+
+static int init_rfd(struct process *p)
+{
+	struct sockaddr *sa = (struct sockaddr *)&p->csa;
+	int ret, rfd = -1;
+
+	rfd = socket(sa->sa_family, SOCK_DGRAM, 0);
+	if (rfd == -1) {
+		perror("socket");
+		return -1;
+	}
+	ret = bind(rfd, sa, p->salen);
+	if (ret == -1) {
+		perror("bind");
+		goto err;
+	}
+	p->rfd = rfd;
+	return 0;
+err:
+	if (rfd != -1)
+		if (close(rfd))
+			perror("close");
 	return -1;
 }
 
@@ -182,13 +248,23 @@ static int init(struct process *p, char *addr)
 	ret = init_address(p, addr);
 	if (ret == -1)
 		return -1;
+	ret = init_rfd(p);
+	if (ret == -1)
+		return -1;
 	c->p = p;
 	return 0;
 }
 
 static void term(const struct process *restrict p)
 {
-	return;
+	const struct client *ctx = p->client;
+
+	if (ctx->wfd != -1)
+		if (shutdown(ctx->wfd, SHUT_RDWR))
+			perror("shutdown");
+	if (p->rfd != -1)
+		if (close(p->rfd))
+			perror("close");
 }
 
 int main(int argc, char *const argv[])
