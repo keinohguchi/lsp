@@ -108,8 +108,28 @@ err:
 	return -1;
 }
 
+static ssize_t send_command(struct client *ctx, const char *cmdline)
+{
+	ssize_t rem;
+	char *buf;
+
+	rem = strlen(cmdline)+1; /* null */
+	buf = (char *)cmdline;
+	while (rem > 0) {
+		ssize_t len = send(ctx->sd, buf, rem, 0);
+		if (len == -1) {
+			perror("send");
+			return -1;
+		}
+		rem -= len;
+		buf += len;
+	}
+	return rem;
+}
+
 static int handle(struct client *ctx, const char *cmdline)
 {
+	ssize_t len;
 	int ret;
 
 	if (!strncasecmp(cmdline, "quit", strlen(cmdline)))
@@ -117,6 +137,10 @@ static int handle(struct client *ctx, const char *cmdline)
 	ret = connect_server(ctx, cmdline);
 	if (ret == -1)
 		return -1;
+	len = send_command(ctx, cmdline);
+	if (len == -1)
+		goto out;
+out:
 	if (close(ctx->sd))
 		perror("close");
 	ctx->sd = -1;
