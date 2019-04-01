@@ -131,14 +131,13 @@ static ssize_t send_command(struct client *ctx, const char *cmdline)
 	return rem;
 }
 
-static ssize_t print_response(struct client *ctx)
+static ssize_t handle_response(struct client *ctx)
 {
 	const struct process *const p = ctx->p;
-	size_t bufsiz = sizeof(ctx->buf);
 	ssize_t rem, len;
 	char *buf;
 
-	len = recv(p->rfd, ctx->buf, bufsiz, 0);
+	len = recv(p->rfd, ctx->buf, sizeof(ctx->buf), 0);
 	if (len == -1) {
 		perror("recv");
 		return -1;
@@ -172,7 +171,7 @@ static int handle(struct client *ctx, const char *cmdline)
 	len = send_command(ctx, cmdline);
 	if (len == -1)
 		goto out;
-	len = print_response(ctx);
+	len = handle_response(ctx);
 	if (len == -1)
 		goto out;
 out:

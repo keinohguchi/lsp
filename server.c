@@ -21,6 +21,9 @@
 #ifndef NR_OPEN
 #define NR_OPEN 1024
 #endif /* NR_OPEN */
+#ifndef ARG_MAX
+#define ARG_MAX 1024
+#endif /* ARG_MAX */
 
 struct server {
 	pid_t			pid;
@@ -204,12 +207,19 @@ static int handle(struct server *ctx, char *const cmdline,
 		perror("fork");
 		goto out;
 	} else if (pid == 0) {
-		char *const argv[2] = {cmdline, NULL};
+		char *argv[ARG_MAX], *start = cmdline;
+		int i, ret;
 
 		ret = dup2(fd, STDOUT_FILENO);
 		if (ret == -1) {
 			perror("dup2");
 			exit(EXIT_FAILURE);
+		}
+		for (i = 0; i < ARG_MAX; i++) {
+			argv[i] = strtok(start, " \t\n\r");
+			if (argv[i] == NULL)
+				break;
+			start = NULL;
 		}
 		ret = execvp(argv[0], argv);
 		if (ret == -1) {
