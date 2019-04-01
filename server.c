@@ -509,6 +509,7 @@ int main(int argc, char *const argv[])
 			p->concurrent = val;
 			break;
 		case 'd':
+			p->output = stderr;
 			p->daemon = 1;
 			break;
 		case 'h':
