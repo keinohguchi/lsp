@@ -198,9 +198,9 @@ static void *server(void *arg)
 		}
 		client = (char *)inet_ntop(p->family, &sin.sin_addr, addr, sizeof(addr));
 		if (client == NULL)
-			ret = snprintf(buf, sizeof(buf), "Hello, Client\n");
+			ret = snprintf(buf, sizeof(buf), "Client connected\n");
 		else
-			ret = snprintf(buf, sizeof(buf), "Hello, %s:%d\n",
+			ret = snprintf(buf, sizeof(buf), "%s:%d connected\n",
 				       client, ntohs(sin.sin_port));
 		if (ret < 0) {
 			perror("snprintf");
@@ -208,13 +208,7 @@ static void *server(void *arg)
 				perror("shutdown");
 			continue;
 		}
-		len = send(c, buf, strlen(buf)+1, 0); /* +null */
-		if (len == -1) {
-			perror("send");
-			if (shutdown(c, SHUT_RD))
-				perror("shutdown");
-			continue;
-		}
+		fprintf(p->output, buf);
 		reset_timer(p);
 again:
 		len = recv(c, buf, sizeof(buf), 0);
