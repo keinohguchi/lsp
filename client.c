@@ -20,6 +20,7 @@ struct client {
 static struct process {
 	struct client		client[1];		/* single client */
 	const char		*prompt;
+	const char		*server;
 	int			port;
 	socklen_t		salen;
 	struct sockaddr_storage	ssa;
@@ -31,6 +32,7 @@ static struct process {
 } process = {
 	.client[0].wfd	= -1,
 	.prompt		= "client",
+	.server		= "127.0.0.1",
 	.port		= 9999,
 	.salen		= -1,
 	.ssa.ss_family	= AF_UNSPEC,
@@ -47,7 +49,7 @@ static struct process {
 static void usage(const struct process *restrict p, FILE *s, int status)
 {
 	const struct option *o;
-	fprintf(s, "usage: %s [-%s] <server IP address>\n", p->progname, p->opts);
+	fprintf(s, "usage: %s [-%s] [server IP address]\n", p->progname, p->opts);
 	fprintf(s, "options:\n");
 	for (o = p->lopts; o->name; o++) {
 		fprintf(s, "\t-%c,--%s:", o->val, o->name);
@@ -185,16 +187,21 @@ out:
 	return 1;
 }
 
-static int init_address(struct process *p, const char *addr)
+static int init_server(struct process *p)
 {
 	unsigned short port = p->port;
 	struct sockaddr_in *sin4;
-	char *colon;
+	char *addr, *colon;
 	int ret;
 
+	addr = strdup(p->server);
+	if (addr == NULL) {
+		perror("strdup");
+		return -1;
+	}
 	colon = strrchr(addr, ':');
 	if (colon != NULL) {
-		int val = strtol(colon, NULL, 10);
+		int val = strtol(colon+1, NULL, 10);
 		if (val > 0 && val <= USHRT_MAX) {
 			port = val;
 			*colon = '\0';
@@ -202,19 +209,25 @@ static int init_address(struct process *p, const char *addr)
 	}
 	sin4 = (struct sockaddr_in *)&p->ssa;
 	ret = inet_pton(AF_INET, addr, &sin4->sin_addr);
-	if (ret == 1) {
-		/* server side */
-		p->salen = sizeof(struct sockaddr_in);
-		sin4->sin_family = AF_INET;
-		sin4->sin_port = htons(port);
-		/* client side */
-		memcpy(&p->csa, &p->ssa, sizeof(p->csa));
-		sin4 = (struct sockaddr_in *)&p->csa;
-		sin4->sin_addr.s_addr = 0;
-		return 0;
+	if (ret != 1) {
+		/* No IPv6 support yet */
+		ret = -1;
+		goto out;
 	}
-	/* No IPv6 support yet */
-	return -1;
+	ret = 0;
+	/* server side */
+	p->salen = sizeof(struct sockaddr_in);
+	sin4->sin_family = AF_INET;
+	sin4->sin_port = htons(port);
+	/* client side */
+	memcpy(&p->csa, &p->ssa, sizeof(p->csa));
+	sin4 = (struct sockaddr_in *)&p->csa;
+	sin4->sin_addr.s_addr = 0;
+	goto out;
+out:
+	if (addr)
+		free(addr);
+	return ret;
 }
 
 static int init_rfd(struct process *p)
@@ -241,12 +254,12 @@ err:
 	return -1;
 }
 
-static int init(struct process *p, char *addr)
+static int init(struct process *p)
 {
 	struct client *c = p->client;
 	int ret;
 
-	ret = init_address(p, addr);
+	ret = init_server(p);
 	if (ret == -1)
 		return -1;
 	ret = init_rfd(p);
@@ -288,9 +301,9 @@ int main(int argc, char *const argv[])
 			break;
 		}
 	}
-	if (optind >= argc)
-		usage(p, stderr, EXIT_FAILURE);
-	ret = init(p, argv[optind]);
+	if (optind < argc)
+		p->server = argv[optind];
+	ret = init(p);
 	if (ret == -1)
 		return 1;
 	ctx = p->client;
