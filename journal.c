@@ -2,12 +2,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <getopt.h>
+#include <systemd/sd-journal.h>
+
+struct context {
+	sd_journal *jd;
+};
 
 static struct process {
+	struct context		journal[1];	/* single context */
 	const char		*progname;
 	const char		*const opts;
 	const struct option	lopts[];
 } process = {
+	.journal[0].jd	= NULL,
 	.progname	= NULL,
 	.opts		= "h",
 	.lopts		= {
@@ -35,10 +42,30 @@ static void usage(const struct process *restrict p, FILE *s, int status)
 	exit(status);
 }
 
+static int init(struct process *p)
+{
+	struct context *ctx = p->journal;
+	int ret;
+
+	ret = sd_journal_open(&ctx->jd, SD_JOURNAL_LOCAL_ONLY);
+	if (ret == -1) {
+		perror("sd_journal_open");
+		return -1;
+	}
+	return 0;
+}
+
+static void term(const struct process *restrict p)
+{
+	const struct context *ctx = p->journal;
+	if (ctx->jd)
+		sd_journal_close(ctx->jd);
+}
+
 int main(int argc, char *const argv[])
 {
 	struct process *p = &process;
-	int o;
+	int ret, o;
 
 	p->progname = argv[0];
 	optind = 0;
@@ -53,5 +80,9 @@ int main(int argc, char *const argv[])
 			break;
 		}
 	}
+	ret = init(p);
+	if (ret == -1)
+		return 1;
+	term(p);
 	return 0;
 }

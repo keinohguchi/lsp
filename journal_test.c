@@ -20,6 +20,11 @@ int main(void)
 			.argv	= {target, "-h", NULL},
 			.want	= 0,
 		},
+		{
+			.name	= "no command line option",
+			.argv	= {target, NULL},
+			.want	= 0,
+		},
 		{.name = NULL}, /* sentry */
 	};
 	int ret = -1;

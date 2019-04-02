@@ -41,6 +41,7 @@ CFLAGS += -Werror
 CFLAGS += -g
 CFLAGS += -D_GNU_SOURCE
 CFLAGS += -lpthread
+CFLAGS += -lsystemd
 CFLAGS += -lrt
 CFLAGS += -fpic
 .PHONY: all help test check clean $(TESTS)
