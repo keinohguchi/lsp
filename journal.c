@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <getopt.h>
+#include <limits.h>
 #include <errno.h>
 #include <systemd/sd-journal.h>
 
@@ -11,14 +12,17 @@ struct context {
 
 static struct process {
 	struct context		journal[1];	/* single context */
+	const char		*unit;
 	const char		*progname;
 	const char		*const opts;
 	const struct option	lopts[];
 } process = {
 	.journal[0].jd	= NULL,
+	.unit		= NULL,
 	.progname	= NULL,
-	.opts		= "h",
+	.opts		= "u:h",
 	.lopts		= {
+		{"unit",	required_argument,	NULL,	'u'},
 		{"help",	no_argument,		NULL,	'h'},
 		{NULL, 0, NULL, 0},
 	},
@@ -32,6 +36,9 @@ static void usage(const struct process *restrict p, FILE *s, int status)
 	for (o = p->lopts; o->name; o++) {
 		fprintf(s, "\t-%c,--%s", o->val, o->name);
 		switch (o->val) {
+		case 'u':
+			fprintf(s, "\tShow logs from the specified service unit\n");
+			break;
 		case 'h':
 			fprintf(s, "\tDisplay this message and exit\n");
 			break;
@@ -54,6 +61,16 @@ static int init(struct process *p)
 		perror("sd_journal_open");
 		return -1;
 	}
+	if (p->unit) {
+		char buf[LINE_MAX];
+		snprintf(buf, sizeof(buf), "_SYSTEMD_UNIT=%s.service", p->unit);
+		ret = sd_journal_add_match(ctx->jd, buf, 0);
+		if (ret < 0) {
+			errno = -ret;
+			perror("sd_journal_add_match");
+			goto err;
+		}
+	}
 	ret = sd_journal_seek_head(ctx->jd);
 	if (ret < 0) {
 		errno = -ret;
@@ -71,6 +88,8 @@ static void term(const struct process *restrict p)
 	const struct context *ctx = p->journal;
 	if (ctx->jd)
 		sd_journal_close(ctx->jd);
+	if (p->unit)
+		free((void *)p->unit);
 }
 
 static int fetch(struct context *ctx)
@@ -103,6 +122,9 @@ int main(int argc, char *const argv[])
 	optind = 0;
 	while ((o = getopt_long(argc, argv, p->opts, p->lopts, NULL)) != -1) {
 		switch (o) {
+		case 'u':
+			p->unit = strdup(optarg);
+			break;
 		case 'h':
 			usage(p, stdout, EXIT_SUCCESS);
 			break;

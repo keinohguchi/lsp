@@ -12,7 +12,7 @@ int main(void)
 	char *const target = realpath("./journal", NULL);
 	const struct test {
 		const char	*const name;
-		char		*const argv[3];
+		char		*const argv[4];
 		int		want;
 	} *t, tests[] = {
 		{
@@ -21,8 +21,13 @@ int main(void)
 			.want	= 0,
 		},
 		{
-			.name	= "no command line option",
+			.name	= "dump everything",
 			.argv	= {target, NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "dump systemd-journald log only",
+			.argv	= {target, "-u", "systemd-journald", NULL},
 			.want	= 0,
 		},
 		{.name = NULL}, /* sentry */
