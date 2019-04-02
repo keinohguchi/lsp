@@ -3,7 +3,7 @@ a.out
 *.o
 *.~
 cscope.*
-liblsp.a
+liblsp.*
 select
 poll
 writev
@@ -33,3 +33,4 @@ client
 server
 httpd
 netlink
+journal

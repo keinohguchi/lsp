@@ -28,6 +28,7 @@ PROGS += client
 PROGS += server
 PROGS += httpd
 PROGS += netlink
+PROGS += journal
 LIB       := liblsp.a
 #LIB       := liblsp.so
 LIB_SRCS  := ls.c
