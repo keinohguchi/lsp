@@ -30,6 +30,12 @@ int main(void)
 			.signo	= SIGHUP,
 			.want	= 0,
 		},
+		{
+			.name	= "SIGKILL with 10ms sleep",
+			.argv	= {target, "-t", "10", NULL},
+			.signo	= SIGKILL,
+			.want	= 0,
+		},
 		{.name = NULL}, /* sentry */
 	};
 	int ret = 0;
