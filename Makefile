@@ -15,6 +15,7 @@ PROGS += thread
 PROGS += withdraw
 PROGS += xattr
 PROGS += mstat
+PROGS += signal
 PROGS += clocks
 PROGS += prime
 PROGS += access
