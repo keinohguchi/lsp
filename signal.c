@@ -5,11 +5,11 @@
 #include <limits.h>
 #include <signal.h>
 #include <errno.h>
-#include <poll.h>
+#include <time.h>
 #include <unistd.h>
 
 static struct process {
-	sig_atomic_t		signaled:1;
+	sig_atomic_t		signaled;
 	long			timeout;
 	const char		*progname;
 	const char		*const opts;
@@ -53,15 +53,27 @@ static void hup_action(int signo, siginfo_t *si, void *ucontext)
 	struct process *p = &process;
 	if (signo != SIGHUP)
 		return;
-	p->signaled = 1;
+	p->signaled++;
 }
 
 static int msleep(long msec)
 {
-	int ret = poll(NULL, 0, msec);
-	if (ret == -1)
-		return ret;
-	return 0;
+	struct timespec ts = {
+		.tv_sec		= msec/1000,
+		.tv_nsec	= msec%1000*1000*1000,
+	};
+	struct timespec rem;
+	int ret;
+
+	while ((ret = nanosleep(&ts, &rem) == -1)) {
+		if (errno == EINTR) {
+			ts = rem;
+			continue;
+		}
+		perror("nanosleep");
+		break;
+	}
+	return ret;
 }
 
 int main(int argc, char *const argv[])
@@ -114,14 +126,11 @@ int main(int argc, char *const argv[])
 		perror("sigprocmask");
 		return 1;
 	}
+	fprintf(stderr, "signal blocked\n");
 	msleep(p->timeout);
 	ret = sigprocmask(SIG_SETMASK, &omask, NULL);
-	for (;;) {
-		if (p->signaled) {
-			printf("signal handled\n");
-			break;
-		}
-		msleep(p->timeout);
-	}
+	fprintf(stderr, "signal unblocked\n");
+	msleep(p->timeout);
+	printf("%d signal(s) handled\n", p->signaled);
 	return 0;
 }
