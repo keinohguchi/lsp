@@ -10,6 +10,7 @@ writev
 epoll
 inode
 block
+fork
 wait
 system
 daemon
@@ -22,7 +23,6 @@ mstat
 clocks
 prime
 ls
-fork
 access
 time
 find
