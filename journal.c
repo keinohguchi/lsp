@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <getopt.h>
+#include <errno.h>
 #include <systemd/sd-journal.h>
 
 struct context {
@@ -48,7 +49,8 @@ static int init(struct process *p)
 	int ret;
 
 	ret = sd_journal_open(&ctx->jd, SD_JOURNAL_LOCAL_ONLY);
-	if (ret == -1) {
+	if (ret < 0) {
+		errno = -ret;
 		perror("sd_journal_open");
 		return -1;
 	}
