@@ -54,7 +54,16 @@ static int init(struct process *p)
 		perror("sd_journal_open");
 		return -1;
 	}
+	ret = sd_journal_seek_head(ctx->jd);
+	if (ret < 0) {
+		errno = -ret;
+		perror("sd_journal_seek_head");
+		goto err;
+	}
 	return 0;
+err:
+	sd_journal_close(ctx->jd);
+	return -1;
 }
 
 static void term(const struct process *restrict p)
@@ -64,9 +73,30 @@ static void term(const struct process *restrict p)
 		sd_journal_close(ctx->jd);
 }
 
+static int fetch(struct context *ctx)
+{
+	return sd_journal_next(ctx->jd);
+}
+
+static int handle(struct context *ctx)
+{
+	const char *data;
+	size_t len;
+	int ret;
+
+	ret = sd_journal_get_data(ctx->jd, "MESSAGE", (const void **)&data, &len);
+	if (ret < 0) {
+		errno = -ret;
+		perror("sd_journal_get_data");
+		return -1;
+	}
+	return printf("%*s\n", (int)len, data);
+}
+
 int main(int argc, char *const argv[])
 {
 	struct process *p = &process;
+	struct context *ctx;
 	int ret, o;
 
 	p->progname = argv[0];
@@ -85,6 +115,10 @@ int main(int argc, char *const argv[])
 	ret = init(p);
 	if (ret == -1)
 		return 1;
+	ctx = p->journal;
+	while ((ret = fetch(ctx)) > 0)
+		if ((ret = handle(ctx)) == -1)
+			break;
 	term(p);
 	return 0;
 }
