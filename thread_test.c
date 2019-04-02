@@ -1,79 +1,68 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <limits.h>
 #include <string.h>
+#include <limits.h>
+#include <signal.h>
 #include <errno.h>
+#include <unistd.h>
 #include <sys/wait.h>
-
-const char *const progname = "thread";
-
-static char *const progpath(const char *const progname)
-{
-	static char buf[LINE_MAX];
-	size_t len;
-	char *endp;
-
-	if (getcwd(buf, sizeof(buf)) == NULL) {
-		perror("getcwd");
-		return NULL;
-	}
-	len = strlen(buf);
-	endp = buf+len;
-	if (snprintf(endp, LINE_MAX-len, "/%s", progname) < 0) {
-		perror("snprintf");
-		return NULL;
-	}
-	return buf;
-}
 
 int main(void)
 {
-	char *const path = progpath(progname);
+	char *const target = realpath("./thread", NULL);
 	const struct test {
 		const char	*name;
 		char		*const argv[4];
+		int		signo;
+		int		want;
 	} *t, tests[] = {
 		{
 			.name	= "1 thread",
-			.argv	= {path, "-c", "1", NULL},
+			.argv	= {target, "-c", "1", NULL},
+			.signo	= 0,
+			.want	= 0,
 		},
 		{
 			.name	= "2 threads",
-			.argv	= {path, "-c", "2", NULL},
+			.argv	= {target, "-c", "2", NULL},
+			.want	= 0,
 		},
 		{
 			.name	= "12 threads",
-			.argv	= {path, "-c", "12", NULL},
+			.argv	= {target, "-c", "12", NULL},
+			.want	= 0,
 		},
 		{
 			.name	= "512 threads",
-			.argv	= {path, "-c", "512", NULL},
+			.argv	= {target, "-c", "512", NULL},
+			.want	= 0,
 		},
 		{
 			.name	= "1024 threads",
-			.argv	= {path, "-c", "1024", NULL},
+			.argv	= {target, "-c", "1024", NULL},
+			.want	= 0,
 		},
-		{ .name = NULL }, /* sentry */
+		{.name = NULL}, /* sentry */
 	};
+	int ret = -1;
 
 	for (t = tests; t->name; t++) {
-		int ret, status;
+		int status;
 		pid_t pid;
 
+		ret = -1;
 		pid = fork();
 		if (pid == -1) {
 			fprintf(stderr, "%s: fork: %s\n",
 				t->name, strerror(errno));
-			abort();
+			goto out;
 		} else if (pid == 0) {
-			/* child */
-			ret = execv(path, t->argv);
+			ret = execv(t->argv[0], t->argv);
 			if (ret == -1) {
 				fprintf(stderr, "%s: execv: %s\n",
 					t->name, strerror(errno));
-				abort();
+				exit(EXIT_FAILURE);
 			}
 			/* not reached */
 		}
@@ -81,22 +70,29 @@ int main(void)
 		if (ret == -1) {
 			fprintf(stderr, "%s: waitpid: %s\n",
 				t->name, strerror(errno));
-			abort();
+			goto out;
 		}
+		ret = -1;
 		if (WIFSIGNALED(status)) {
 			fprintf(stderr, "%s: got signal %s\n",
 				t->name, strsignal(WTERMSIG(status)));
-			abort();
+			goto out;
 		}
 		if (!WIFEXITED(status)) {
 			fprintf(stderr, "%s: won't exit\n", t->name);
-			abort();
+			goto out;
 		}
-		if (WEXITSTATUS(status) != 0) {
-			fprintf(stderr, "%s: got exit status %d\n",
-				t->name, WEXITSTATUS(status));
-			abort();
+		if (WEXITSTATUS(status) != t->want) {
+			fprintf(stderr, "%s: unexpected exit status:\n\t- want: %d\n\t-  got: %d\n",
+				t->name, t->want, WEXITSTATUS(status));
+			goto out;
 		}
+		ret = 0;
 	}
+out:
+	if (target)
+		free(target);
+	if (ret)
+		return 1;
 	return 0;
 }
