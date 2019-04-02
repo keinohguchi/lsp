@@ -29,8 +29,9 @@ PROGS += server
 PROGS += httpd
 PROGS += netlink
 PROGS += journal
-LIB       := liblsp.a
-#LIB       := liblsp.so
+OBJS  := $(patsubst %,%.o,$(PROGS))
+LIB   := liblsp.a
+#LIB  := liblsp.so
 LIB_SRCS  := ls.c
 LIB_OBJS  := $(patsubst %.c,%.o,$(LIB_SRCS))
 TEST_SRCS := $(filter %_test.c,$(wildcard *.c))
@@ -41,7 +42,6 @@ CFLAGS += -Werror
 CFLAGS += -g
 CFLAGS += -D_GNU_SOURCE
 CFLAGS += -lpthread
-CFLAGS += -lsystemd
 CFLAGS += -lrt
 CFLAGS += -fpic
 .PHONY: all help test check clean $(TESTS)
@@ -50,6 +50,8 @@ ls: ls_main.o $(LIB)
 	$(CC) $(CFLAGS) -Wl,-rpath=. -o $@ $^
 sh: sh.o $(LIB)
 	$(CC) $(CFLAGS) -Wl,-rpath=. -o $@ $^
+journal: journal.o
+	$(CC) $(CFLAGS) -lsystemd -o $@ $^
 $(LIB): $(LIB_OBJS)
 	$(AR) rcs $@ $^
 	#$(CC) $(CFLAGS) -shared -o $@ $^
@@ -66,6 +68,6 @@ $(TESTS): $(PROGS) $(TEST_SRCS)
 		echo FAIL; cat $$log; exit 1; \
 	fi
 clean:
-	@$(RM) $(LIB) $(LIB_OBJS) $(PROGS) $(TESTS) .*.log
+	@-$(RM) $(OBJS) $(LIB) $(LIB_OBJS) $(PROGS) $(TESTS) .*.log
 %: %.c
 	$(CC) $(CFLAGS) -o $@ $<
