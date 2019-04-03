@@ -23,25 +23,31 @@ jobs:
     <<: *defaults
     steps:
       - checkout
+      - run:
+          name: install libsystemd
+          command: |
+            apt update
+            apt install -y libsystemd-dev
       - persist_to_workspace:
-          root: /home/circleci/project/lsp
+          root: /
           paths:
-            - .
+            - usr/x86_64-linux-gnu/libsystemd.so*
+            - home/circleci/project/lsp
   build:
     <<: *defaults
     steps:
       - attach_workspace:
-          at: /home/circleci/project/lsp
+          at: /
       - run: make
   help:
     <<: *defaults
     steps:
       - attach_workspace:
-          at: /home/circleci/project/lsp
+          at: /
       - run: make help
   test:
     <<: *defaults
     steps:
       - attach_workspace:
-          at: /home/circleci/project/lsp
+          at: /
       - run: make test
