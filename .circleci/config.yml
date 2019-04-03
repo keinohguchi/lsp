@@ -33,9 +33,7 @@ jobs:
           paths:
             - etc/ld.so.cache
             - usr/include/systemd
-            - lib/x86_64-linux-gnu/libsystemd.so
-            - lib/x86_64-linux-gnu/libsystemd.so.0
-            - lib/x86_64-linux-gnu/libsystemd.so.0.17.0
+            - lib/x86_64-linux-gnu/libsystemd.so*
             - home/circleci/project/lsp
   build:
     <<: *defaults
