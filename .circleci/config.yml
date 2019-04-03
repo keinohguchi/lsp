@@ -31,6 +31,7 @@ jobs:
       - persist_to_workspace:
           root: /
           paths:
+            - usr/include/systemd
             - usr/x86_64-linux-gnu/libsystemd.so*
             - home/circleci/project/lsp
   build:
