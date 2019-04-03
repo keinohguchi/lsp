@@ -35,7 +35,8 @@ jobs:
             - etc/ld.so.conf
             - etc/ld.so.conf.d
             - usr/include/systemd
-            - lib/x86_64-linux-gnu/libsystemd.so.*
+            - lib/x86_64-linux-gnu/libsystemd.so.0
+            - lib/x86_64-linux-gnu/libsystemd.so.0.17.0
             - home/circleci/project/lsp
   build:
     <<: *defaults
