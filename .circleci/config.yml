@@ -43,16 +43,19 @@ jobs:
     steps:
       - attach_workspace:
           at: /
+      - run: ldconfig
       - run: make
   help:
     <<: *defaults
     steps:
       - attach_workspace:
           at: /
+      - run: ldconfig
       - run: make help
   test:
     <<: *defaults
     steps:
       - attach_workspace:
           at: /
+      - run: ldconfig
       - run: make test
