@@ -31,9 +31,9 @@ jobs:
       - persist_to_workspace:
           root: /
           paths:
-            - etc/ld.so.cache
+            - etc
             - usr/include/systemd
-            - usr/x86_64-linux-gnu/libsystemd.so*
+            - usr/x86_64-linux-gnu
             - home/circleci/project/lsp
   build:
     <<: *defaults
