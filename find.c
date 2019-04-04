@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
 #include <unistd.h>
 #include <getopt.h>
 #include <limits.h>
@@ -15,43 +14,50 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
-static const char *progname;
-static const char *pattern;
-static bool recursive = false;
-static const char *opts = "n:rh";
-static const struct option lopts[] = {
-	{"name",	required_argument,	NULL,	'n'},
-	{"help",	no_argument,		NULL,	'h'},
-	{"recursive",	no_argument,		NULL,	'r'},
-	{NULL,		0,			NULL,	0},
+static struct process {
+	const char		*pattern;
+	int			recursive:1;
+	const char		*progname;
+	const char		*const opts;
+	const struct option	lopts[];
+} process = {
+	.recursive	= 0,
+	.opts		= "n:rh",
+	.lopts		= {
+		{"name",	required_argument,	NULL,	'n'},
+		{"help",	no_argument,		NULL,	'h'},
+		{"recursive",	no_argument,		NULL,	'r'},
+		{NULL, 0, NULL, 0},
+	},
 };
 
 /* context used for the thread communication */
 struct context {
-	const char	*path;
-	pthread_t	tid;
-	int		ret;
+	const struct process	*p;
+	const char		*path;
+	pthread_t		tid;
+	int			ret;
 };
 
-static void usage(FILE *stream, int status)
+static void usage(const struct process *restrict p, FILE *s, int status)
 {
 	const struct option *o;
-	fprintf(stream, "usage: %s [-%s] <directory name>\n", progname, opts);
-	fprintf(stream, "options:\n");
-	for (o = lopts; o->name; o++) {
-		fprintf(stream, "\t-%c,--%s:", o->val, o->name);
+	fprintf(s, "usage: %s [-%s] <directory name>\n", p->progname, p->opts);
+	fprintf(s, "options:\n");
+	for (o = p->lopts; o->name; o++) {
+		fprintf(s, "\t-%c,--%s:", o->val, o->name);
 		switch (o->val) {
 		case 'n':
-			fprintf(stream, "\tfind specified pattern\n");
+			fprintf(s, "\tfind specified pattern\n");
 			break;
 		case 'r':
-			fprintf(stream, "\trecursively find the file\n");
+			fprintf(s, "\trecursively find the file\n");
 			break;
 		case 'h':
-			fprintf(stream, "\tdisplay this message and exit\n");
+			fprintf(s, "\tdisplay this message and exit\n");
 			break;
 		default:
-			fprintf(stream, "\t%s option\n", o->name);
+			fprintf(s, "\t%s option\n", o->name);
 			break;
 		}
 	}
@@ -75,7 +81,7 @@ static const char *pathname(const char *base, const char *file, char *buf, size_
 	}
 }
 
-static int pathmatch(const char *restrict path, const char *restrict pattern)
+static int pathmatch(const struct process *restrict p, const char *restrict path)
 {
 	char *tmp, *name;
 	int ret;
@@ -85,21 +91,21 @@ static int pathmatch(const char *restrict path, const char *restrict pattern)
 		return -1;
 	}
 	name = basename(tmp);
-	ret = fnmatch(pattern, name, FNM_EXTMATCH);
+	ret = fnmatch(p->pattern, name, FNM_EXTMATCH);
 	free(tmp);
 	return ret;
 }
 
-static int find(const char *const path);
+static int find(const struct process *restrict p, const char *const path);
 
 static void *finder(void *data)
 {
 	struct context *ctx = data;
-	ctx->ret = find(ctx->path);
+	ctx->ret = find(ctx->p, ctx->path);
 	return (void *)&ctx->ret;
 }
 
-static int find(const char *const path)
+static int find(const struct process *restrict p, const char *const path)
 {
 	struct context ctxs[1024];
 	struct dirent *d;
@@ -108,7 +114,7 @@ static int find(const char *const path)
 	int ret;
 	int i;
 
-	if (!pathmatch(path, pattern))
+	if (!pathmatch(p, path))
 		printf("%s\n", path);
 
 	ret = lstat(path, &s);
@@ -137,8 +143,8 @@ static int find(const char *const path)
 			break;
 		}
 		pathname(path, d->d_name, child, PATH_MAX);
-		if (recursive) {
-			ret = find(child);
+		if (p->recursive) {
+			ret = find(p, child);
 			free(child);
 		} else {
 			struct context *ctx;
@@ -149,6 +155,7 @@ static int find(const char *const path)
 			}
 			ctx = &ctxs[i];
 			ctx->path = child;
+			ctx->p = p;
 			ret = pthread_create(&ctx->tid, NULL, finder, ctx);
 			if (ret) {
 				errno = ret;
@@ -162,7 +169,7 @@ static int find(const char *const path)
 	}
 	if (closedir(dir))
 		perror("closedir");
-	if (!recursive) {
+	if (!p->recursive) {
 		while (--i >= 0) {
 			int *retp;
 			int cret = pthread_join(ctxs[i].tid, (void **)&retp);
@@ -183,33 +190,35 @@ static int find(const char *const path)
 
 int main(int argc, char *argv[])
 {
+	struct process *p = &process;
 	const char *path;
-	int opt;
+	int o;
 
-	progname = argv[0];
-	pattern = "*";
-	while ((opt = getopt_long(argc, argv, opts, lopts, NULL)) != -1)
-		switch (opt) {
+	p->progname = argv[0];
+	p->pattern = "*";
+	optind = 0;
+	while ((o = getopt_long(argc, argv, p->opts, p->lopts, NULL)) != -1)
+		switch (o) {
 		case 'n':
-			pattern = optarg;
+			p->pattern = optarg;
 			break;
 		case 'r':
-			recursive = true;
+			p->recursive = 1;
 			break;
 		case 'h':
-			usage(stdout, EXIT_SUCCESS);
+			usage(p, stdout, EXIT_SUCCESS);
 			break;
 		case '?':
 		default:
-			usage(stderr, EXIT_FAILURE);
+			usage(p, stderr, EXIT_FAILURE);
 			break;
 		}
 	if (optind >= argc)
-		usage(stderr, EXIT_FAILURE);
+		usage(p, stderr, EXIT_FAILURE);
 
 	/* let's roll */
 	path = argv[optind];
-	if (find(path))
+	if (find(p, path))
 		return 1;
 	return 0;
 }
