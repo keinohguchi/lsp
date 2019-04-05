@@ -35,6 +35,11 @@ int main(void)
 			.argv	= {target, "-u", "systemd-journald", "-f", ".cursor.txt", NULL},
 			.want	= 0,
 		},
+		{
+			.name	= "dump systemd-journald log only with 1024 single query",
+			.argv	= {target, "-u", "systemd-journald", "-m", "1024", NULL},
+			.want	= 0,
+		},
 		{.name = NULL}, /* sentry */
 	};
 	int ret = -1;

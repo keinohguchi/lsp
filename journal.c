@@ -7,11 +7,13 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <poll.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <systemd/sd-journal.h>
 
 struct context {
+	const struct process	*p;
 	sd_journal		*jd;
 	char			*cursor;
 	size_t			cursor_len;
@@ -21,6 +23,8 @@ static struct process {
 	struct context		journal[1];	/* single context */
 	const char		*unit;
 	const char		*cursor_file;
+	int			max_entry;
+	short			interval;
 	short			timeout;
 	const char		*progname;
 	const char		*const opts;
@@ -31,12 +35,16 @@ static struct process {
 	.journal[0].cursor_len	= 0,
 	.unit			= NULL,
 	.cursor_file		= NULL,
+	.max_entry		= 10,
+	.interval		= 0,
 	.timeout		= 0,
 	.progname		= NULL,
-	.opts			= "u:f:t:h",
+	.opts			= "u:f:m:i:t:h",
 	.lopts			= {
 		{"unit",	required_argument,	NULL,	'u'},
 		{"cursor_file",	required_argument,	NULL,	'f'},
+		{"max_entry",	required_argument,	NULL,	'm'},
+		{"interval",	required_argument,	NULL,	'i'},
 		{"timeout",	required_argument,	NULL,	't'},
 		{"help",	no_argument,		NULL,	'h'},
 		{NULL, 0, NULL, 0},
@@ -56,6 +64,13 @@ static void usage(const struct process *restrict p, FILE *s, int status)
 			break;
 		case 'f':
 			fprintf(s, "\tPersistent journal cursor file (default: none)\n");
+			break;
+		case 'm':
+			fprintf(s, "\t\tMaximum query entry for each invocation (default: %d)\n",
+				p->max_entry);
+			break;
+		case 'i':
+			fprintf(s, "\t\tInterval in millisecond (default: none)\n");
 			break;
 		case 't':
 			fprintf(s, "\t\tTimeout in millisecond, "
@@ -135,7 +150,7 @@ static int init(struct process *p)
 
 	ret = init_cursor(p);
 	if (ret == -1)
-		return -1;
+		goto err;
 	ret = sd_journal_open(&ctx->jd, SD_JOURNAL_LOCAL_ONLY);
 	if (ret < 0) {
 		errno = -ret;
@@ -158,6 +173,7 @@ static int init(struct process *p)
 		perror("sd_journal_seek_head");
 		goto err;
 	}
+	ctx->p = p;
 	return 0;
 err:
 	if (ctx->jd)
@@ -183,22 +199,42 @@ static void term(const struct process *restrict p)
 
 static int fetch(struct context *ctx)
 {
-	return sd_journal_next(ctx->jd);
+	const struct process *const p = ctx->p;
+	int ret;
+
+	ret = poll(NULL, 0, p->interval);
+	if (ret == -1) {
+		perror("poll");
+		return -1;
+	}
+	return 0;
 }
 
 static int handle(struct context *ctx)
 {
+	const struct process *const p = ctx->p;
 	const char *data;
 	size_t len;
-	int ret;
+	int i, ret;
 
-	ret = sd_journal_get_data(ctx->jd, "MESSAGE", (const void **)&data, &len);
-	if (ret < 0) {
-		errno = -ret;
-		perror("sd_journal_get_data");
-		return -1;
+	for (i = 0; i < p->max_entry; i++) {
+		ret = sd_journal_next(ctx->jd);
+		if (ret == 0)
+			break;
+		else if (ret < 0) {
+			errno = -ret;
+			perror("sd_journal_next");
+			break;
+		}
+		ret = sd_journal_get_data(ctx->jd, "MESSAGE", (const void **)&data, &len);
+		if (ret < 0) {
+			errno = -ret;
+			perror("sd_journal_get_data");
+			break;
+		}
+		printf("%*s\n", (int)len, data);
 	}
-	return printf("%*s\n", (int)len, data);
+	return i;
 }
 
 int main(int argc, char *const argv[])
@@ -226,6 +262,18 @@ int main(int argc, char *const argv[])
 				usage(p, stderr, EXIT_FAILURE);
 			}
 			break;
+		case 'm':
+			val = strtol(optarg, NULL, 10);
+			if (val < 1 || val > INT_MAX)
+				usage(p, stderr, EXIT_FAILURE);
+			p->max_entry = val;
+			break;
+		case 'i':
+			val = strtol(optarg, NULL, 10);
+			if (val < 0 || val > SHRT_MAX)
+				usage(p, stderr, EXIT_FAILURE);
+			p->interval = val;
+			break;
 		case 't':
 			val = strtol(optarg, NULL, 10);
 			if (val < -1 || val > SHRT_MAX)
@@ -245,8 +293,8 @@ int main(int argc, char *const argv[])
 	if (ret == -1)
 		return 1;
 	ctx = p->journal;
-	while ((ret = fetch(ctx)) > 0)
-		if ((ret = handle(ctx)) == -1)
+	while (fetch(ctx) != -1)
+		if (handle(ctx) <= 0)
 			break;
 	term(p);
 	return 0;
