@@ -21,6 +21,7 @@ static struct process {
 	struct context		journal[1];	/* single context */
 	const char		*unit;
 	const char		*cursor_file;
+	short			timeout;
 	const char		*progname;
 	const char		*const opts;
 	const struct option	lopts[];
@@ -30,11 +31,13 @@ static struct process {
 	.journal[0].cursor_len	= 0,
 	.unit			= NULL,
 	.cursor_file		= NULL,
+	.timeout		= 0,
 	.progname		= NULL,
-	.opts			= "u:f:h",
+	.opts			= "u:f:t:h",
 	.lopts			= {
 		{"unit",	required_argument,	NULL,	'u'},
 		{"cursor_file",	required_argument,	NULL,	'f'},
+		{"timeout",	required_argument,	NULL,	't'},
 		{"help",	no_argument,		NULL,	'h'},
 		{NULL, 0, NULL, 0},
 	},
@@ -49,16 +52,20 @@ static void usage(const struct process *restrict p, FILE *s, int status)
 		fprintf(s, "\t-%c,--%s", o->val, o->name);
 		switch (o->val) {
 		case 'u':
-			fprintf(s, "\tShow logs from the specified service unit\n");
+			fprintf(s, "\t\tShow logs from the specified service unit\n");
 			break;
 		case 'f':
 			fprintf(s, "\tPersistent journal cursor file (default: none)\n");
 			break;
+		case 't':
+			fprintf(s, "\t\tTimeout in millisecond, "
+				"in case of interval option (default: none)\n");
+			break;
 		case 'h':
-			fprintf(s, "\tDisplay this message and exit\n");
+			fprintf(s, "\t\tDisplay this message and exit\n");
 			break;
 		default:
-			fprintf(s, "\t%s option", o->name);
+			fprintf(s, "\t\t%s option", o->name);
 			break;
 		}
 	}
@@ -203,6 +210,7 @@ int main(int argc, char *const argv[])
 	p->progname = argv[0];
 	optind = 0;
 	while ((o = getopt_long(argc, argv, p->opts, p->lopts, NULL)) != -1) {
+		long val;
 		switch (o) {
 		case 'u':
 			p->unit = strdup(optarg);
@@ -217,6 +225,12 @@ int main(int argc, char *const argv[])
 				perror("strdup");
 				usage(p, stderr, EXIT_FAILURE);
 			}
+			break;
+		case 't':
+			val = strtol(optarg, NULL, 10);
+			if (val < -1 || val > SHRT_MAX)
+				usage(p, stderr, EXIT_FAILURE);
+			p->timeout = val;
 			break;
 		case 'h':
 			usage(p, stdout, EXIT_SUCCESS);
