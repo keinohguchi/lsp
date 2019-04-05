@@ -170,11 +170,20 @@ static int init_journal(struct process *p)
 			goto err;
 		}
 	}
-	ret = sd_journal_seek_head(ctx->jd);
-	if (ret < 0) {
-		errno = -ret;
-		perror("sd_journal_seek_head");
-		goto err;
+	if (ctx->cursor[0] != '\0') {
+		ret = sd_journal_seek_cursor(ctx->jd, ctx->cursor);
+		if (ret < 0) {
+			errno = -ret;
+			perror("sd_journal_seek_cursor");
+			goto err;
+		}
+	} else {
+		ret = sd_journal_seek_head(ctx->jd);
+		if (ret < 0) {
+			errno = -ret;
+			perror("sd_journal_seek_head");
+			goto err;
+		}
 	}
 	return 0;
 err:
@@ -287,6 +296,7 @@ static int handle(struct context *ctx)
 {
 	const struct process *const p = ctx->p;
 	const char *data;
+	char *cursor;
 	size_t len;
 	int i, ret;
 
@@ -307,6 +317,13 @@ static int handle(struct context *ctx)
 		}
 		printf("%*s\n", (int)len, data);
 	}
+	ret = sd_journal_get_cursor(ctx->jd, &cursor);
+	if (ret < 0) {
+		errno = -ret;
+		perror("sd_journal_get_cursor");
+	}
+	strncpy(ctx->cursor, cursor, ctx->cursor_len);
+	free(cursor);
 	return i;
 }
 
