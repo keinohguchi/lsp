@@ -143,19 +143,16 @@ err:
 	return -1;
 }
 
-static int init(struct process *p)
+static int init_journal(struct process *p)
 {
 	struct context *ctx = p->journal;
 	int ret;
 
-	ret = init_cursor(p);
-	if (ret == -1)
-		goto err;
 	ret = sd_journal_open(&ctx->jd, SD_JOURNAL_LOCAL_ONLY);
 	if (ret < 0) {
 		errno = -ret;
 		perror("sd_journal_open");
-		goto err;
+		return -1;
 	}
 	if (p->unit) {
 		char buf[LINE_MAX];
@@ -173,12 +170,28 @@ static int init(struct process *p)
 		perror("sd_journal_seek_head");
 		goto err;
 	}
-	ctx->p = p;
 	return 0;
 err:
 	if (ctx->jd)
 		sd_journal_close(ctx->jd);
-	if (ctx->cursor != NULL)
+	return -1;
+}
+
+static int init(struct process *p)
+{
+	struct context *ctx = p->journal;
+	int ret;
+
+	ret = init_cursor(p);
+	if (ret == -1)
+		return -1;
+	ret = init_journal(p);
+	if (ret == -1)
+		goto err;
+	ctx->p = p;
+	return 0;
+err:
+	if (ctx->cursor)
 		if (munmap(ctx->cursor, ctx->cursor_len))
 			perror("munmap");
 	return -1;
@@ -190,7 +203,8 @@ static void term(const struct process *restrict p)
 	if (ctx->jd)
 		sd_journal_close(ctx->jd);
 	if (ctx->cursor)
-		munmap(ctx->cursor, ctx->cursor_len);
+		if (munmap(ctx->cursor, ctx->cursor_len))
+			perror("munmap");
 	if (p->cursor_file)
 		free((void *)p->cursor_file);
 	if (p->unit)
