@@ -1,9 +1,13 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <getopt.h>
 #include <limits.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/stat.h>
 #include <systemd/sd-journal.h>
 
 struct context {
@@ -13,16 +17,19 @@ struct context {
 static struct process {
 	struct context		journal[1];	/* single context */
 	const char		*unit;
+	const char		*cursor_file;
 	const char		*progname;
 	const char		*const opts;
 	const struct option	lopts[];
 } process = {
 	.journal[0].jd	= NULL,
 	.unit		= NULL,
+	.cursor_file	= NULL,
 	.progname	= NULL,
-	.opts		= "u:h",
+	.opts		= "u:f:h",
 	.lopts		= {
 		{"unit",	required_argument,	NULL,	'u'},
+		{"cursor_file",	required_argument,	NULL,	'f'},
 		{"help",	no_argument,		NULL,	'h'},
 		{NULL, 0, NULL, 0},
 	},
@@ -39,6 +46,9 @@ static void usage(const struct process *restrict p, FILE *s, int status)
 		case 'u':
 			fprintf(s, "\tShow logs from the specified service unit\n");
 			break;
+		case 'f':
+			fprintf(s, "\tPersistent journal cursor file (default: none)\n");
+			break;
 		case 'h':
 			fprintf(s, "\tDisplay this message and exit\n");
 			break;
@@ -53,13 +63,24 @@ static void usage(const struct process *restrict p, FILE *s, int status)
 static int init(struct process *p)
 {
 	struct context *ctx = p->journal;
-	int ret;
+	int ret, fd = -1;
 
+	if (p->cursor_file) {
+		fd = open(p->cursor_file, O_RDWR|O_CREAT|O_TRUNC, S_IRUSR|S_IWUSR);
+		if (fd == -1) {
+			perror("open");
+			return -1;
+		}
+		if (close(fd)) {
+			perror("close");
+			return -1;
+		}
+	}
 	ret = sd_journal_open(&ctx->jd, SD_JOURNAL_LOCAL_ONLY);
 	if (ret < 0) {
 		errno = -ret;
 		perror("sd_journal_open");
-		return -1;
+		goto err;
 	}
 	if (p->unit) {
 		char buf[LINE_MAX];
@@ -79,7 +100,11 @@ static int init(struct process *p)
 	}
 	return 0;
 err:
-	sd_journal_close(ctx->jd);
+	if (ctx->jd)
+		sd_journal_close(ctx->jd);
+	if (fd != -1)
+		if (close(fd))
+			perror("close");
 	return -1;
 }
 
@@ -88,6 +113,8 @@ static void term(const struct process *restrict p)
 	const struct context *ctx = p->journal;
 	if (ctx->jd)
 		sd_journal_close(ctx->jd);
+	if (p->cursor_file)
+		free((void *)p->cursor_file);
 	if (p->unit)
 		free((void *)p->unit);
 }
@@ -124,6 +151,17 @@ int main(int argc, char *const argv[])
 		switch (o) {
 		case 'u':
 			p->unit = strdup(optarg);
+			if (p->unit == NULL) {
+				perror("strdup");
+				usage(p, stderr, EXIT_FAILURE);
+			}
+			break;
+		case 'f':
+			p->cursor_file = strdup(optarg);
+			if (p->cursor_file == NULL) {
+				perror("strdup");
+				usage(p, stderr, EXIT_FAILURE);
+			}
 			break;
 		case 'h':
 			usage(p, stdout, EXIT_SUCCESS);

@@ -12,7 +12,7 @@ int main(void)
 	char *const target = realpath("./journal", NULL);
 	const struct test {
 		const char	*const name;
-		char		*const argv[4];
+		char		*const argv[6];
 		int		want;
 	} *t, tests[] = {
 		{
@@ -28,6 +28,11 @@ int main(void)
 		{
 			.name	= "dump systemd-journald log only",
 			.argv	= {target, "-u", "systemd-journald", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "dump systemd-journald log only and keep the last cursor",
+			.argv	= {target, "-u", "systemd-journald", "-f", ".cursor.txt", NULL},
 			.want	= 0,
 		},
 		{.name = NULL}, /* sentry */
