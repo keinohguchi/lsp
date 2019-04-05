@@ -6,14 +6,18 @@
 #include <limits.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <unistd.h>
 #include <poll.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <sys/signalfd.h>
 #include <systemd/sd-journal.h>
 
 struct context {
 	const struct process	*p;
+	struct pollfd		fds[1];
+	int			nfds;
 	sd_journal		*jd;
 	char			*cursor;
 	size_t			cursor_len;
@@ -33,6 +37,8 @@ static struct process {
 	.journal[0].jd		= NULL,
 	.journal[0].cursor	= NULL,
 	.journal[0].cursor_len	= 0,
+	.journal[0].fds[0].fd	= -1,
+	.journal[0].nfds	= 1,
 	.unit			= NULL,
 	.cursor_file		= NULL,
 	.max_entry		= 10,
@@ -177,10 +183,43 @@ err:
 	return -1;
 }
 
+static int init_signal(struct process *p)
+{
+	sigset_t mask;
+	int ret;
+
+	ret = sigemptyset(&mask);
+	if (ret == -1) {
+		perror("sigemptyset");
+		return -1;
+	}
+	ret = sigaddset(&mask, SIGTERM);
+	if (ret == -1) {
+		perror("sigaddset(SIGTERM)");
+		return -1;
+	}
+	ret = sigaddset(&mask, SIGINT);
+	if (ret == -1) {
+		perror("sigaddset(SIGINT)");
+		return -1;
+	}
+	ret = sigaddset(&mask, SIGHUP);
+	if (ret == -1) {
+		perror("sigaddset(SIGHUP)");
+		return -1;
+	}
+	ret = sigprocmask(SIG_SETMASK, &mask, NULL);
+	if (ret == -1) {
+		perror("sigprocmask");
+		return -1;
+	}
+	return signalfd(-1, &mask, SFD_CLOEXEC);
+}
+
 static int init(struct process *p)
 {
 	struct context *ctx = p->journal;
-	int ret;
+	int ret, fd;
 
 	ret = init_cursor(p);
 	if (ret == -1)
@@ -188,6 +227,11 @@ static int init(struct process *p)
 	ret = init_journal(p);
 	if (ret == -1)
 		goto err;
+	fd = init_signal(p);
+	if (fd == -1)
+		goto err;
+	ctx->fds[0].fd		= fd;
+	ctx->fds[0].events	= POLLIN;
 	ctx->p = p;
 	return 0;
 err:
@@ -197,11 +241,9 @@ err:
 	return -1;
 }
 
-static void term(const struct process *restrict p)
+static void sigterm(const struct process *restrict p)
 {
 	const struct context *ctx = p->journal;
-	if (ctx->jd)
-		sd_journal_close(ctx->jd);
 	if (ctx->cursor)
 		if (munmap(ctx->cursor, ctx->cursor_len))
 			perror("munmap");
@@ -211,17 +253,34 @@ static void term(const struct process *restrict p)
 		free((void *)p->unit);
 }
 
+static void term(const struct process *restrict p)
+{
+	const struct context *ctx = p->journal;
+	int i;
+
+	for (i = 0; i < ctx->nfds; i++)
+		if (ctx->fds[i].fd != -1)
+			if (close(ctx->fds[i].fd))
+				perror("close");
+	if (ctx->jd)
+		sd_journal_close(ctx->jd);
+	sigterm(p);
+}
+
 static int fetch(struct context *ctx)
 {
 	const struct process *const p = ctx->p;
 	int ret;
 
-	ret = poll(NULL, 0, p->interval);
+	ret = poll(ctx->fds, ctx->nfds, p->interval);
 	if (ret == -1) {
 		perror("poll");
 		return -1;
-	}
-	return 0;
+	} else if (ret == 0)
+		return 0;
+	/* signal handling... */
+	sigterm(p);
+	exit(EXIT_FAILURE);
 }
 
 static int handle(struct context *ctx)
