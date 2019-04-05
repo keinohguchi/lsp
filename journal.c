@@ -8,10 +8,13 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
 #include <systemd/sd-journal.h>
 
 struct context {
-	sd_journal *jd;
+	sd_journal		*jd;
+	char			*cursor;
+	size_t			cursor_len;
 };
 
 static struct process {
@@ -22,12 +25,14 @@ static struct process {
 	const char		*const opts;
 	const struct option	lopts[];
 } process = {
-	.journal[0].jd	= NULL,
-	.unit		= NULL,
-	.cursor_file	= NULL,
-	.progname	= NULL,
-	.opts		= "u:f:h",
-	.lopts		= {
+	.journal[0].jd		= NULL,
+	.journal[0].cursor	= NULL,
+	.journal[0].cursor_len	= 0,
+	.unit			= NULL,
+	.cursor_file		= NULL,
+	.progname		= NULL,
+	.opts			= "u:f:h",
+	.lopts			= {
 		{"unit",	required_argument,	NULL,	'u'},
 		{"cursor_file",	required_argument,	NULL,	'f'},
 		{"help",	no_argument,		NULL,	'h'},
@@ -60,22 +65,70 @@ static void usage(const struct process *restrict p, FILE *s, int status)
 	exit(status);
 }
 
-static int init(struct process *p)
+static int init_cursor(struct process *p)
 {
 	struct context *ctx = p->journal;
 	int ret, fd = -1;
+	struct stat st;
+	void *cursor;
+	size_t len;
 
-	if (p->cursor_file) {
-		fd = open(p->cursor_file, O_RDWR|O_CREAT|O_TRUNC, S_IRUSR|S_IWUSR);
-		if (fd == -1) {
-			perror("open");
-			return -1;
-		}
-		if (close(fd)) {
-			perror("close");
-			return -1;
+	ctx->cursor_len = 0;
+	ctx->cursor = NULL;
+	if (p->cursor_file == NULL)
+		return 0;
+
+	len = sysconf(_SC_LINE_MAX);
+	if (len == -1) {
+		perror("sysconf(_SC_LINE_MAX)");
+		return -1;
+	}
+	fd = open(p->cursor_file, O_RDWR|O_CREAT, S_IRUSR|S_IWUSR);
+	if (fd == -1) {
+		perror("open");
+		return -1;
+	}
+	ret = fstat(fd, &st);
+	if (ret == -1) {
+		perror("fstat");
+		goto err;
+	}
+	if (st.st_size < len) {
+		ret = ftruncate(fd, len);
+		if (ret == -1) {
+			perror("ftruncate");
+			goto err;
 		}
 	}
+	cursor = mmap(NULL, len, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+	if (cursor == NULL) {
+		perror("mmap");
+		goto err;
+	}
+	if (close(fd)) {
+		if (munmap(cursor, len))
+			perror("munmap");
+		perror("close");
+		return -1;
+	}
+	ctx->cursor_len = len;
+	ctx->cursor = cursor;
+	return 0;
+err:
+	if (fd != -1)
+		if (close(fd))
+			perror("close");
+	return -1;
+}
+
+static int init(struct process *p)
+{
+	struct context *ctx = p->journal;
+	int ret;
+
+	ret = init_cursor(p);
+	if (ret == -1)
+		return -1;
 	ret = sd_journal_open(&ctx->jd, SD_JOURNAL_LOCAL_ONLY);
 	if (ret < 0) {
 		errno = -ret;
@@ -102,9 +155,9 @@ static int init(struct process *p)
 err:
 	if (ctx->jd)
 		sd_journal_close(ctx->jd);
-	if (fd != -1)
-		if (close(fd))
-			perror("close");
+	if (ctx->cursor != NULL)
+		if (munmap(ctx->cursor, ctx->cursor_len))
+			perror("munmap");
 	return -1;
 }
 
@@ -113,6 +166,8 @@ static void term(const struct process *restrict p)
 	const struct context *ctx = p->journal;
 	if (ctx->jd)
 		sd_journal_close(ctx->jd);
+	if (ctx->cursor)
+		munmap(ctx->cursor, ctx->cursor_len);
 	if (p->cursor_file)
 		free((void *)p->cursor_file);
 	if (p->unit)
