@@ -170,7 +170,7 @@ static int init_journal(struct process *p)
 			goto err;
 		}
 	}
-	if (ctx->cursor[0] != '\0') {
+	if (ctx->cursor != NULL && ctx->cursor[0] != '\0') {
 		ret = sd_journal_seek_cursor(ctx->jd, ctx->cursor);
 		if (ret < 0) {
 			errno = -ret;
