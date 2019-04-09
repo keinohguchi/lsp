@@ -321,6 +321,7 @@ static int handle(struct context *ctx)
 	if (ret < 0) {
 		errno = -ret;
 		perror("sd_journal_get_cursor");
+		return -1;
 	}
 	strncpy(ctx->cursor, cursor, ctx->cursor_len);
 	free(cursor);
