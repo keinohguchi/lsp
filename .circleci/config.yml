@@ -52,4 +52,9 @@ jobs:
     steps:
       - attach_workspace:
           at: /
+      - run:
+          name: install sudo for netlink_test
+          command: |
+            apt update
+            apt install -y sudo
       - run: make test

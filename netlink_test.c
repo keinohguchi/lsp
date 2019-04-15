@@ -50,8 +50,8 @@ int main(void)
 			.want	= 0,
 		},
 		{
-			.name	= "iface option success",
-			.argv	= {target, "-i", "lo", "-t", "1", NULL},
+			.name	= "iface option success (with sudo)",
+			.argv	= {"sudo", target, "-i", "lo", "-t", "1", NULL},
 			.want	= 0,
 		},
 		{
@@ -73,7 +73,7 @@ int main(void)
 			perror("fork");
 			break;
 		} else if (pid == 0) {
-			int ret = execv(target, t->argv);
+			int ret = execvp(t->argv[0], t->argv);
 			if (ret == -1) {
 				perror("execv");
 				exit(EXIT_FAILURE);
