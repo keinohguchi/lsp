@@ -423,7 +423,7 @@ static int request_ifinfomsg(struct context *ctx)
 	ret = sendmsg(ctx->sfd, &ctx->msg, 0);
 	if (ret == -1) {
 		perror("sendmsg");
-		return -1;
+		/* ignore the error */
 	}
 	/* restore the iov length */
 	ctx->iov.iov_len = len;
