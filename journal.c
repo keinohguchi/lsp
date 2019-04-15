@@ -43,7 +43,7 @@ static struct process {
 	.journal[0].nfds	= sizeof(process.journal[0].fds)/sizeof(struct pollfd),
 	.unit			= NULL,
 	.cursor_file		= NULL,
-	.max_entry		= 10,
+	.max_entry		= 0,
 	.interval		= 0,
 	.timeout		= 0,
 	.progname		= NULL,
@@ -74,8 +74,7 @@ static void usage(const struct process *restrict p, FILE *s, int status)
 			fprintf(s, "\tPersistent journal cursor file (default: none)\n");
 			break;
 		case 'm':
-			fprintf(s, "\t\tMaximum query entry for each invocation (default: %d)\n",
-				p->max_entry);
+			fprintf(s, "\t\tMaximum query entry limit for each invocation (default: none)\n");
 			break;
 		case 'i':
 			fprintf(s, "\t\tInterval in millisecond (default: none)\n");
@@ -333,7 +332,7 @@ static int handle(struct context *ctx)
 	size_t len;
 	int i, ret;
 
-	for (i = 0; i < p->max_entry; i++) {
+	for (i = 0; p->max_entry == 0 || i < p->max_entry; i++) {
 		ret = sd_journal_next(ctx->jd);
 		if (ret == 0)
 			break;
@@ -388,7 +387,7 @@ int main(int argc, char *const argv[])
 			break;
 		case 'm':
 			val = strtol(optarg, NULL, 10);
-			if (val < 1 || val > INT_MAX)
+			if (val < 0 || val > INT_MAX)
 				usage(p, stderr, EXIT_FAILURE);
 			p->max_entry = val;
 			break;

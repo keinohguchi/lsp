@@ -36,8 +36,18 @@ int main(void)
 			.want	= 0,
 		},
 		{
-			.name	= "dump systemd-journald log only with 1024 single query",
+			.name	= "dump systemd-journald log only with 1 maximum line in each interval",
+			.argv	= {target, "-u", "systemd-journald", "-m", "1", "-t", "1", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "dump systemd-journald log only with 1024 maximum line in each interval",
 			.argv	= {target, "-u", "systemd-journald", "-m", "1024", "-t", "1", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "dump systemd-journald log only with no limit in each interval",
+			.argv	= {target, "-u", "systemd-journald", "-m", "0", "-t", "1", NULL},
 			.want	= 0,
 		},
 		{.name = NULL}, /* sentry */
