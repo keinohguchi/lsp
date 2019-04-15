@@ -159,7 +159,7 @@ static size_t print_file_long(const struct context *restrict ctx, const char *co
 	}
 	if (stmode(st->st_mode, buf, sizeof(buf)) == NULL)
 	    return -1;
-	if ((len = printf("%s %3ld", buf, st->st_nlink)) < 0) {
+	if ((len = printf("%s %3ld", buf, (long)st->st_nlink)) < 0) {
 		perror("printf");
 		return -1;
 	}
