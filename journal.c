@@ -11,12 +11,13 @@
 #include <poll.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <sys/timerfd.h>
 #include <sys/signalfd.h>
 #include <systemd/sd-journal.h>
 
 struct context {
 	const struct process	*p;
-	struct pollfd		fds[1];
+	struct pollfd		fds[2];
 	int			nfds;
 	sd_journal		*jd;
 	char			*cursor;
@@ -38,7 +39,8 @@ static struct process {
 	.journal[0].cursor	= NULL,
 	.journal[0].cursor_len	= 0,
 	.journal[0].fds[0].fd	= -1,
-	.journal[0].nfds	= 1,
+	.journal[0].fds[1].fd	= -1,
+	.journal[0].nfds	= sizeof(process.journal[0].fds)/sizeof(struct pollfd),
 	.unit			= NULL,
 	.cursor_file		= NULL,
 	.max_entry		= 10,
@@ -79,8 +81,7 @@ static void usage(const struct process *restrict p, FILE *s, int status)
 			fprintf(s, "\t\tInterval in millisecond (default: none)\n");
 			break;
 		case 't':
-			fprintf(s, "\t\tTimeout in millisecond, "
-				"in case of interval option (default: none)\n");
+			fprintf(s, "\t\tTimeout in millisecond (default: none)\n");
 			break;
 		case 'h':
 			fprintf(s, "\t\tDisplay this message and exit\n");
@@ -225,6 +226,29 @@ static int init_signal(struct process *p)
 	return signalfd(-1, &mask, SFD_CLOEXEC);
 }
 
+static int init_timer(struct process *p)
+{
+	const struct itimerspec ts = {
+		.it_interval.tv_sec	= 0,
+		.it_interval.tv_nsec	= 0,
+		.it_value.tv_sec	= p->timeout/1000,
+		.it_value.tv_nsec	= p->timeout%1000*1000*1000,
+	};
+	int fd, ret;
+
+	fd = timerfd_create(CLOCK_REALTIME, TFD_CLOEXEC);
+	if (fd == -1) {
+		perror("timerfd_create");
+		return -1;
+	}
+	ret = timerfd_settime(fd, 0, &ts, NULL);
+	if (ret == -1) {
+		perror("timerfd_settime");
+		return -1;
+	}
+	return fd;
+}
+
 static int init(struct process *p)
 {
 	struct context *ctx = p->journal;
@@ -241,6 +265,11 @@ static int init(struct process *p)
 		goto err;
 	ctx->fds[0].fd		= fd;
 	ctx->fds[0].events	= POLLIN;
+	fd = init_timer(p);
+	if (fd == -1)
+		goto err;
+	ctx->fds[1].fd		= fd;
+	ctx->fds[1].events	= POLLIN;
 	ctx->p = p;
 	return 0;
 err:
@@ -287,8 +316,12 @@ static int fetch(struct context *ctx)
 		return -1;
 	} else if (ret == 0)
 		return 0;
-	/* signal handling... */
+	/* timed out */
 	sigterm(p);
+	if (ctx->fds[1].revents&POLLIN) {
+		exit(EXIT_SUCCESS);
+	}
+	/* abnormal termination... */
 	exit(EXIT_FAILURE);
 }
 
@@ -367,7 +400,7 @@ int main(int argc, char *const argv[])
 			break;
 		case 't':
 			val = strtol(optarg, NULL, 10);
-			if (val < -1 || val > SHRT_MAX)
+			if (val < 0 || val > SHRT_MAX)
 				usage(p, stderr, EXIT_FAILURE);
 			p->timeout = val;
 			break;

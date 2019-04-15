@@ -12,7 +12,7 @@ int main(void)
 	char *const target = realpath("./journal", NULL);
 	const struct test {
 		const char	*const name;
-		char		*const argv[6];
+		char		*const argv[8];
 		int		want;
 	} *t, tests[] = {
 		{
@@ -22,22 +22,22 @@ int main(void)
 		},
 		{
 			.name	= "dump everything",
-			.argv	= {target, NULL},
+			.argv	= {target, "-t", "1", NULL},
 			.want	= 0,
 		},
 		{
 			.name	= "dump systemd-journald log only",
-			.argv	= {target, "-u", "systemd-journald", NULL},
+			.argv	= {target, "-u", "systemd-journald", "-t", "1", NULL},
 			.want	= 0,
 		},
 		{
 			.name	= "dump systemd-journald log only and keep the last cursor",
-			.argv	= {target, "-u", "systemd-journald", "-f", ".cursor.txt", NULL},
+			.argv	= {target, "-u", "systemd-journald", "-f", ".cursor.txt", "-t", "1", NULL},
 			.want	= 0,
 		},
 		{
 			.name	= "dump systemd-journald log only with 1024 single query",
-			.argv	= {target, "-u", "systemd-journald", "-m", "1024", NULL},
+			.argv	= {target, "-u", "systemd-journald", "-m", "1024", "-t", "1", NULL},
 			.want	= 0,
 		},
 		{.name = NULL}, /* sentry */
