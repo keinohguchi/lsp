@@ -36,22 +36,24 @@ LIB_SRCS  := ls.c
 LIB_OBJS  := $(patsubst %.c,%.o,$(LIB_SRCS))
 TEST_SRCS := $(filter %_test.c,$(wildcard *.c))
 TESTS     := $(patsubst %.c,%,$(TEST_SRCS))
-CC     ?= gcc
-CFLAGS += -Wall
-CFLAGS += -Werror
-CFLAGS += -g
-CFLAGS += -D_GNU_SOURCE
-CFLAGS += -lpthread
-CFLAGS += -lrt
-CFLAGS += -fpic
+CC      ?= gcc
+CFLAGS  += -Wall
+CFLAGS  += -Werror
+CFLAGS  += -g
+CFLAGS  += -D_GNU_SOURCE
+CFLAGS  += -fpic
+LDFLAGS += -lpthread
+LDFLAGS += -lrt
 .PHONY: all help test check clean $(TESTS)
 all: $(PROGS)
+$(filter-out ls sh journal,$(PROGS)):
+	$(CC) $(CFLAGS) -o $@ $@.c $(LDFLAGS)
 ls: ls_main.o $(LIB)
-	$(CC) $(CFLAGS) -Wl,-rpath=. -o $@ $^
+	$(CC) $(CFLAGS) -Wl,-rpath=. -o $@ $^ $(LDFLAGS)
 sh: sh.o $(LIB)
-	$(CC) $(CFLAGS) -Wl,-rpath=. -o $@ $^
+	$(CC) $(CFLAGS) -Wl,-rpath=. -o $@ $^ $(LDFLAGS)
 journal: journal.o
-	$(CC) $(CFLAGS) -lsystemd -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) -lsystemd
 $(LIB): $(LIB_OBJS)
 	$(AR) rcs $@ $^
 	#$(CC) $(CFLAGS) -shared -o $@ $^
