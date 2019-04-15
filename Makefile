@@ -39,6 +39,7 @@ TESTS     := $(patsubst %.c,%,$(TEST_SRCS))
 CC      ?= gcc
 CFLAGS  += -Wall
 CFLAGS  += -Werror
+CFLAGS  += -Werror=format-security
 CFLAGS  += -g
 CFLAGS  += -D_GNU_SOURCE
 CFLAGS  += -fpic

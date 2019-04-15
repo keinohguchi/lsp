@@ -260,7 +260,7 @@ static int handle(struct server *ctx, char *const cmdline,
 	ret = 0;
 	goto out;
 err:
-	fprintf(p->output, msg);
+	fprintf(p->output, "%s", msg);
 	ret = send(fd, msg, strlen(msg)+1, 0);
 	if (ret == -1)
 		perror("send");
