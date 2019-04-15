@@ -176,7 +176,6 @@ out:
 static int init(struct process *p)
 {
 	struct context *ctx = p->ctx;
-	struct sockaddr_nl sa;
 	int ret, efd = -1, sfd = -1;
 	int ifindex;
 	long bufsiz;
@@ -199,10 +198,10 @@ static int init(struct process *p)
 		perror("socket");
 		goto err;
 	}
-	memset(&sa, 0, sizeof(sa));
-	sa.nl_family = AF_NETLINK;
-	sa.nl_groups = p->group;
-	ret = bind(sfd, (struct sockaddr *)&sa, sizeof(sa));
+	memset(&ctx->addr, 0, sizeof(struct sockaddr_nl));
+	ctx->addr.nl_family = AF_NETLINK;
+	ctx->addr.nl_groups = p->group;
+	ret = bind(sfd, (struct sockaddr *)&ctx->addr, sizeof(ctx->addr));
 	if (ret == -1) {
 		perror("bind");
 		goto err;
@@ -230,15 +229,15 @@ static int init(struct process *p)
 	}
 	/* initialize the message header */
 	memset(&ctx->msg, 0, sizeof(ctx->msg));
-	ctx->p			= p;
-	ctx->efd		= efd;
-	ctx->sfd		= sfd;
 	ctx->msg.msg_name	= &ctx->addr;
 	ctx->msg.msg_namelen	= sizeof(ctx->addr);
 	ctx->msg.msg_iov	= &ctx->iov;
 	ctx->msg.msg_iovlen	= 1;
 	ctx->iov.iov_base	= ctx->buf;
 	ctx->iov.iov_len	= bufsiz;
+	ctx->p			= p;
+	ctx->efd		= efd;
+	ctx->sfd		= sfd;
 	ret = init_signal(p);
 	if (ret == -1)
 		goto err;
@@ -398,6 +397,39 @@ static int handle(struct context *ctx, int nr)
 	return i;
 }
 
+static int request_ifinfomsg(struct context *ctx)
+{
+	struct nlmsghdr *nh = (struct nlmsghdr *)ctx->buf;
+	struct ifinfomsg *ifi;
+	size_t len;
+	int ret;
+
+	if (ctx->ifindex == -1)
+		return 0;
+
+	/* prepare the message */
+	memset(nh, 0, sizeof(struct nlmsghdr)+sizeof(struct ifinfomsg));
+	nh->nlmsg_type	= RTM_GETLINK;
+	nh->nlmsg_flags	= NLM_F_REQUEST;
+	nh->nlmsg_len	= sizeof(struct nlmsghdr)+sizeof(struct ifinfomsg);
+	ifi		= (struct ifinfomsg *)(nh+1);
+	ifi->ifi_family	= AF_UNSPEC;
+	ifi->ifi_index	= ctx->ifindex;
+
+	/* update the length */
+	len = ctx->iov.iov_len;
+	ctx->iov.iov_len = nh->nlmsg_len;
+
+	ret = sendmsg(ctx->sfd, &ctx->msg, 0);
+	if (ret == -1) {
+		perror("sendmsg");
+		return -1;
+	}
+	/* restore the iov length */
+	ctx->iov.iov_len = len;
+	return 0;
+}
+
 static void term(struct process *p)
 {
 	struct context *ctx = p->ctx;
@@ -475,11 +507,17 @@ int main(int argc, char *const argv[])
 	if (ret == -1)
 		return 1;
 
+	/* request the current interface status */
+	ret = request_ifinfomsg(p->ctx);
+	if (ret == -1)
+		goto err;
+
 	/* let's roll */
 	while ((ret = fetch(p->ctx)) != -1)
 		if ((ret = handle(p->ctx, ret)) <= 0)
 			break;
 
+err:
 	term(p);
 	if (ret)
 		return 1;
