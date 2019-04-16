@@ -327,6 +327,8 @@ static int fetch(struct context *ctx)
 static int handle(struct context *ctx)
 {
 	const struct process *const p = ctx->p;
+	const char *field = "MESSAGE";
+	size_t flen = strlen(field)+1; /* include trailing '=' */
 	const char *data;
 	char *cursor;
 	size_t len;
@@ -341,13 +343,16 @@ static int handle(struct context *ctx)
 			perror("sd_journal_next");
 			break;
 		}
-		ret = sd_journal_get_data(ctx->jd, "MESSAGE", (const void **)&data, &len);
+		ret = sd_journal_get_data(ctx->jd, field, (const void **)&data, &len);
 		if (ret < 0) {
 			errno = -ret;
 			perror("sd_journal_get_data");
 			break;
 		}
-		printf("%*s\n", (int)len, data);
+		/* Strip the field prefix */
+		if (len <= flen)
+			continue;
+		printf("%*s\n", (int)(len-flen), data+flen);
 	}
 	ret = sd_journal_get_cursor(ctx->jd, &cursor);
 	if (ret < 0) {
