@@ -29,8 +29,8 @@ static struct process {
 	const char		*unit;
 	const char		*cursor_file;
 	int			max_entry;
-	short			interval;
-	short			timeout;
+	int			interval;
+	int			timeout;
 	const char		*progname;
 	const char		*const opts;
 	const struct option	lopts[];
@@ -398,13 +398,13 @@ int main(int argc, char *const argv[])
 			break;
 		case 'i':
 			val = strtol(optarg, NULL, 10);
-			if (val < 0 || val > SHRT_MAX)
+			if (val < 0 || val > INT_MAX)
 				usage(p, stderr, EXIT_FAILURE);
 			p->interval = val;
 			break;
 		case 't':
 			val = strtol(optarg, NULL, 10);
-			if (val < 0 || val > SHRT_MAX)
+			if (val < 0 || val > INT_MAX)
 				usage(p, stderr, EXIT_FAILURE);
 			p->timeout = val;
 			break;
