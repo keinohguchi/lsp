@@ -160,7 +160,7 @@ static ssize_t handle_response(struct client *ctx)
 	return 0;
 }
 
-static int handle(struct client *ctx, const char *cmdline)
+static int exec(struct client *ctx, const char *cmdline)
 {
 	ssize_t len;
 	int ret;
@@ -308,7 +308,7 @@ int main(int argc, char *const argv[])
 		return 1;
 	ctx = p->client;
 	while ((cmd = fetch(ctx)))
-		if ((ret = handle(ctx, cmd)) <= 0)
+		if ((ret = exec(ctx, cmd)) <= 0)
 			break;
 	term(p);
 	if (ret)

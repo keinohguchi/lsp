@@ -73,8 +73,8 @@ static int fetch(struct context *ctx)
 	return poll(ctx->fds, ctx->nfds, timeout);
 }
 
-/* handle returns the number of handled events, or zero in case of timeout */
-static int handle(const struct context *restrict ctx, int nr)
+/* exec returns the number of handled events, or zero in case of timeout */
+static int exec(const struct context *restrict ctx, int nr)
 {
 	char buf[BUFSIZ];
 	int i, j;
@@ -147,7 +147,7 @@ int main(int argc, char *const argv[])
 
 	/* let's roll */
 	while ((ret = fetch(p->ctx)) != -1)
-		if ((ret = handle(p->ctx, ret)) <= 0)
+		if ((ret = exec(p->ctx, ret)) <= 0)
 			break;
 
 	term(p);

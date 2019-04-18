@@ -89,7 +89,7 @@ static int fetch(struct context *ctx)
 		      &timeout);
 }
 
-static int handle(const struct context *restrict ctx, int nr)
+static int exec(const struct context *restrict ctx, int nr)
 {
 	char buf[BUFSIZ];
 	int i, j;
@@ -157,7 +157,7 @@ int main(int argc, char *const argv[])
 
 	/* let's roll */
 	while ((ret = fetch(p->ctx)) != -1)
-		if ((ret = handle(p->ctx, ret)) <= 0)
+		if ((ret = exec(p->ctx, ret)) <= 0)
 			break;
 
 	term(p);

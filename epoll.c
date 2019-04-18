@@ -91,7 +91,7 @@ static int fetch(struct context *ctx)
 	return epoll_wait(ctx->efd, ctx->events, nr, timeout);
 }
 
-static int handle(struct context *ctx, int nr)
+static int exec(struct context *ctx, int nr)
 {
 	struct epoll_event *e = ctx->events;
 	char buf[BUFSIZ];
@@ -149,7 +149,7 @@ int main(int argc, char *const argv[])
 	if (ret == -1)
 		return 1;
 	while ((ret = fetch(p->ctx)) != -1)
-		if ((ret = handle(p->ctx, ret)) <= 0)
+		if ((ret = exec(p->ctx, ret)) <= 0)
 			break;
 	term(p);
 	if (ret)

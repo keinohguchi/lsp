@@ -324,7 +324,7 @@ static int fetch(struct context *ctx)
 	exit(EXIT_FAILURE);
 }
 
-static int handle(struct context *ctx)
+static int exec(struct context *ctx)
 {
 	const struct process *const p = ctx->p;
 	const char *field = "MESSAGE";
@@ -422,7 +422,7 @@ int main(int argc, char *const argv[])
 		return 1;
 	ctx = p->journal;
 	while (fetch(ctx) != -1)
-		if (handle(ctx) < 0)
+		if (exec(ctx) < 0)
 			break;
 	term(p);
 	return 0;

@@ -383,7 +383,7 @@ static ssize_t handle_event(struct context *ctx, struct epoll_event *e)
 	return len;
 }
 
-static int handle(struct context *ctx, int nr)
+static int exec(struct context *ctx, int nr)
 {
 	int i, ret;
 	printf("handling...\n");
@@ -514,7 +514,7 @@ int main(int argc, char *const argv[])
 
 	/* let's roll */
 	while ((ret = fetch(p->ctx)) != -1)
-		if ((ret = handle(p->ctx, ret)) <= 0)
+		if ((ret = exec(p->ctx, ret)) <= 0)
 			break;
 
 err:
