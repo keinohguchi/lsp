@@ -88,11 +88,11 @@ clean:
 amd64: amd64-image
 	docker run -v $(PWD):/home/build lsp/amd64 make all clean
 arm64: arm64-image
-	docker run -v $(PWD):/home/build -v $(QEMU):$(QEMU) lsp/$@ make all clean
+	docker run -v $(PWD):/home/build -v $(QEMU):$(QEMU):ro lsp/$@ make all clean
 %-amd64: amd64-image
 	docker run -v $(PWD):/home/build lsp/amd64 make $* clean
 %-arm64: arm64-image
-	docker run -v $(PWD):/home/build -v $(QEMU):$(QEMU)    \
+	docker run -v $(PWD):/home/build -v $(QEMU):$(QEMU):ro \
 		-e TESTS="$(filter-out $(TESTS_EXC),$(TESTS))" \
 		lsp/arm64 make $* clean
 %-image:
