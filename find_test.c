@@ -15,22 +15,22 @@ int main(void)
 	} *t, tests[] = {
 		{
 			.name	= "all the files under /etc",
-			.argv	= {target, "/etc", NULL},
+			.argv	= {target, ".", NULL},
 			.want	= 0,
 		},
 		{
 			.name	= "recursive option",
-			.argv	= {target, "-r", "/", NULL},
+			.argv	= {target, "-r", ".", NULL},
 			.want	= 0,
 		},
 		{
 			.name	= "name option under /etc",
-			.argv	= {target, "-n", "test", "/etc", NULL},
+			.argv	= {target, "-n", "test", ".", NULL},
 			.want	= 0,
 		},
 		{
 			.name	= "name and recursive option",
-			.argv	= {target, "-n", "test", "-r", "/", NULL},
+			.argv	= {target, "-n", "test", "-r", ".", NULL},
 			.want	= 0,
 		},
 		{
