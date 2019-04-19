@@ -177,6 +177,18 @@ static int init_journal(struct process *p)
 			perror("sd_journal_seek_cursor");
 			goto err;
 		}
+		/* Check if we find the previous position */
+		ret = sd_journal_test_cursor(ctx->jd, ctx->cursor);
+		if (ret) {
+			/* advance the entry one in case we find it
+			 * to avoid the duplicate log */
+			ret = sd_journal_next(ctx->jd);
+			if (ret < 0) {
+				errno = -ret;
+				perror("sd_journal_next");
+				goto err;
+			}
+		}
 	} else {
 		ret = sd_journal_seek_head(ctx->jd);
 		if (ret < 0) {
