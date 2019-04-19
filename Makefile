@@ -36,6 +36,14 @@ LIB_SRCS  := ls.c
 LIB_OBJS  := $(patsubst %.c,%.o,$(LIB_SRCS))
 TEST_SRCS := $(filter %_test.c,$(wildcard *.c))
 TESTS     ?= $(patsubst %.c,%,$(TEST_SRCS))
+# Tests not ready on qemu/arm64 environment
+TESTS_EXC := daemon_test
+TESTS_EXC += ls_test
+TESTS_EXC += find_test
+TESTS_EXC += sh_test
+TESTS_EXC += httpd_test
+TESTS_EXC += netlink_test
+TESTS_EXC += journal_test
 QEMU    ?= /usr/bin/qemu-aarch64-static
 CC      ?= gcc
 CFLAGS  += -Wall
@@ -61,7 +69,7 @@ $(LIB): $(LIB_OBJS)
 	#$(CC) $(CFLAGS) -shared -o $@ $^
 help: $(PROGS)
 	@for i in $^; do if ! ./$$i --$@; then exit 1; fi; done
-test check: $(TESTS)
+test check: $(PROGS) $(TESTS)
 $(TESTS): $(PROGS) $(TEST_SRCS)
 	@$(CC) $(CFLAGS) -o $@ $@.c
 	@printf "$@:\t"
@@ -72,7 +80,7 @@ $(TESTS): $(PROGS) $(TEST_SRCS)
 		echo FAIL; cat $$log; exit 1; \
 	fi
 clean:
-	@-$(RM) $(OBJS) $(LIB) $(LIB_OBJS) $(PROGS) $(TESTS) .*.log
+	@-$(RM) $(OBJS) $(LIB) $(LIB_OBJS) $(PROGS) $(TESTS) *.o .*.log
 %: %.c
 	$(CC) $(CFLAGS) -o $@ $<
 # Cross compilations through the docker container.
@@ -83,7 +91,9 @@ arm64: arm64-image
 %-amd64: amd64-image
 	docker run -v $(PWD):/home/build lsp/amd64 make $* clean
 %-arm64: arm64-image
-	docker run -v $(PWD):/home/build -v $(QEMU):$(QEMU) lsp/arm64 make $* clean
+	docker run -v $(PWD):/home/build -v $(QEMU):$(QEMU)    \
+		-e TESTS="$(filter-out $(TESTS_EXC),$(TESTS))" \
+		lsp/arm64 make $* clean
 %-image:
 	if [ -x $(QEMU) ]; then cp $(QEMU) .; fi
 	docker build -t lsp/$* -f Dockerfile.$* .
