@@ -50,8 +50,8 @@ int main(void)
 			.want	= 0,
 		},
 		{
-			.name	= "iface option success (with sudo)",
-			.argv	= {"sudo", target, "-i", "lo", "-t", "1", NULL},
+			.name	= "iface option success",
+			.argv	= {target, "-i", "lo", "-t", "1", NULL},
 			.want	= 0,
 		},
 		{
