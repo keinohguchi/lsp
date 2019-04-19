@@ -38,6 +38,7 @@ TEST_SRCS := $(filter %_test.c,$(wildcard *.c))
 TESTS     ?= $(patsubst %.c,%,$(TEST_SRCS))
 # Tests not ready on qemu/arm64 environment
 TESTS_EXC := daemon_test
+TESTS_EXC += withdraw_test
 TESTS_EXC += ls_test
 TESTS_EXC += find_test
 TESTS_EXC += sh_test
