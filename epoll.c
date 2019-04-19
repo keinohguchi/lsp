@@ -62,6 +62,8 @@ static int init(struct process *p)
 		return -1;
 	ctx->p			= p;
 	ctx->efd		= efd;
+	if (!isatty(STDIN_FILENO))
+		return 0;
 	ctx->events[0].events	= EPOLLIN;
 	ctx->events[0].data.fd	= STDIN_FILENO;
 	ret = epoll_ctl(efd, EPOLL_CTL_ADD, STDIN_FILENO, ctx->events);
