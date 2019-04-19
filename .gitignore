@@ -2,8 +2,10 @@ a.out
 *_test
 *.o
 *.~
+qemu-*
 cscope.*
 liblsp.*
+.cursor*
 select
 poll
 writev

@@ -38,10 +38,10 @@ jobs:
     steps:
       - attach_workspace:
           at: .
-      - run: make amd64-help
+      - run: make help-amd64
   test:
     <<: *defaults
     steps:
       - attach_workspace:
           at: .
-      - run: make amd64-test
+      - run: make test-amd64

@@ -62,6 +62,8 @@ static int init(struct process *p)
 	FD_ZERO(&ctx->wfds);
 	FD_ZERO(&ctx->xfds);
 	ctx->nfds = 0;
+	if (!isatty(STDIN_FILENO))
+		return 0;
 	FD_SET(STDIN_FILENO, &ctx->rfds);
 	if (STDIN_FILENO >= ctx->nfds)
 		ctx->nfds = STDIN_FILENO+1;

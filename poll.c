@@ -54,7 +54,12 @@ static void usage(const struct process *restrict p, FILE *s, int status)
 static int init(struct process *p)
 {
 	struct context *ctx = p->ctx;
-	ctx->p			= p;
+
+	ctx->p = p;
+	if (!isatty(STDIN_FILENO)) {
+		ctx->nfds = 0;
+		return 0;
+	}
 	ctx->fds[0].events	= POLLIN;
 	ctx->fds[0].fd		= STDIN_FILENO;
 	ctx->nfds = sizeof(ctx->fds)/sizeof(struct pollfd);

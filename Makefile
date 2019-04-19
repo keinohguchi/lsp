@@ -36,6 +36,7 @@ LIB_SRCS  := ls.c
 LIB_OBJS  := $(patsubst %.c,%.o,$(LIB_SRCS))
 TEST_SRCS := $(filter %_test.c,$(wildcard *.c))
 TESTS     := $(patsubst %.c,%,$(TEST_SRCS))
+QEMU    ?= /usr/bin/qemu-aarch64-static
 CC      ?= gcc
 CFLAGS  += -Wall
 CFLAGS  += -Werror
@@ -74,10 +75,15 @@ clean:
 	@-$(RM) $(OBJS) $(LIB) $(LIB_OBJS) $(PROGS) $(TESTS) .*.log
 %: %.c
 	$(CC) $(CFLAGS) -o $@ $<
-# Cross compilation through docker container.
-amd64-image:
-	docker build -t lsp/amd64 .
+# Cross compilations through the docker container.
 amd64: amd64-image
 	docker run -v $(PWD):/home/build lsp/amd64 make all clean
-amd64-%: amd64-image
+arm64: arm64-image
+	docker run -v $(PWD):/home/build -v $(QEMU):$(QEMU):ro lsp/$@ make all clean
+%-amd64: amd64-image
 	docker run -v $(PWD):/home/build lsp/amd64 make $* clean
+%-arm64: arm64-image
+	docker run -v $(PWD):/home/build -v $(QEMU):$(QEMU):ro lsp/arm64 make $* clean
+%-image:
+	if [ -x $(QEMU) ]; then cp $(QEMU) .; fi
+	docker build -t lsp/$* -f Dockerfile.$* .

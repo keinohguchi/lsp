@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: GPL-2.0
+FROM lopsided/archlinux-arm64v8
+COPY qemu-aarch64-static /usr/bin
+RUN pacman -Sy --noconfirm gcc make binutils systemd-libs
+WORKDIR /home/build
+CMD ["make"]
