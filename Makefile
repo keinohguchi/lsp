@@ -74,3 +74,10 @@ clean:
 	@-$(RM) $(OBJS) $(LIB) $(LIB_OBJS) $(PROGS) $(TESTS) .*.log
 %: %.c
 	$(CC) $(CFLAGS) -o $@ $<
+# Cross compilation through docker container.
+amd64-image:
+	docker build -t lsp/amd64 .
+amd64: amd64-image
+	docker run -v $(PWD):/home/build lsp/amd64 make all clean
+amd64-%: amd64-image
+	docker run -v $(PWD):/home/build lsp/amd64 make $* clean

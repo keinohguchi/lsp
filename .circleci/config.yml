@@ -1,9 +1,9 @@
 ---
 version: 2
 default: &defaults
-  working_directory: /home/circleci/project/lsp
-  docker:
-    - image: gcc:latest
+  working_directory: /home/circleci/lsp
+  machine:
+    image: circleci/classic:edge
 workflows:
   version: 2
   checkout_build_help_test:
@@ -17,44 +17,31 @@ workflows:
             - checkout
       - test:
           requires:
-            - checkout
+            - build
+            - help
 jobs:
   checkout:
     <<: *defaults
     steps:
       - checkout
-      - run:
-          name: install libsystemd
-          command: |
-            apt update
-            apt install -y libsystemd-dev
       - persist_to_workspace:
-          root: /
-          paths:
-            - etc/ld.so.cache
-            - usr/include/systemd
-            - lib/x86_64-linux-gnu/libsystemd.so*
-            - home/circleci/project/lsp
+          root:  .
+          paths: .
   build:
     <<: *defaults
     steps:
       - attach_workspace:
-          at: /
-      - run: make
+          at: .
+      - run: make amd64
   help:
     <<: *defaults
     steps:
       - attach_workspace:
-          at: /
-      - run: make help
+          at: .
+      - run: make amd64-help
   test:
     <<: *defaults
     steps:
       - attach_workspace:
-          at: /
-      - run:
-          name: install sudo for netlink_test
-          command: |
-            apt update
-            apt install -y sudo
-      - run: make test
+          at: .
+      - run: make amd64-test
