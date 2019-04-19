@@ -34,13 +34,13 @@ int main(void)
 			.want	= 0,
 		},
 		{
-			.name	= "512 threads",
-			.argv	= {target, "-c", "512", NULL},
+			.name	= "32 threads",
+			.argv	= {target, "-c", "32", NULL},
 			.want	= 0,
 		},
 		{
-			.name	= "1024 threads",
-			.argv	= {target, "-c", "1024", NULL},
+			.name	= "64 threads",
+			.argv	= {target, "-c", "64", NULL},
 			.want	= 0,
 		},
 		{.name = NULL}, /* sentry */
