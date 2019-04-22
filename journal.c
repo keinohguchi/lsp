@@ -366,6 +366,11 @@ static int exec(struct context *ctx)
 			continue;
 		printf("%*s\n", (int)(len-flen), data+flen);
 	}
+	ret = fflush(stdout);
+	if (ret == -1) {
+		perror("fflush");
+		return -1;
+	}
 	ret = sd_journal_get_cursor(ctx->jd, &cursor);
 	if (ret < 0) {
 		errno = -ret;
