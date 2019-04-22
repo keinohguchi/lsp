@@ -328,7 +328,7 @@ static int fetch(struct context *ctx)
 	} else if (ret == 0)
 		return 0;
 	/* timed out */
-	sigterm(p);
+	term(p);
 	if (ctx->fds[1].revents&POLLIN) {
 		exit(EXIT_SUCCESS);
 	}
