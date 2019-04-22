@@ -229,6 +229,11 @@ static int init_signal(struct process *p)
 		perror("sigaddset(SIGHUP)");
 		return -1;
 	}
+	ret = sigaddset(&mask, SIGABRT);
+	if (ret == -1) {
+		perror("sigaddset(SIGABRT)");
+		return -1;
+	}
 	ret = sigprocmask(SIG_SETMASK, &mask, NULL);
 	if (ret == -1) {
 		perror("sigprocmask");
