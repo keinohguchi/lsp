@@ -13,11 +13,12 @@
 #include <sys/mman.h>
 #include <sys/timerfd.h>
 #include <sys/signalfd.h>
+#include <systemd/sd-daemon.h>
 #include <systemd/sd-journal.h>
 
 struct context {
 	const struct process	*p;
-	struct pollfd		fds[2];
+	struct pollfd		fds[3];
 	int			nfds;
 	sd_journal		*jd;
 	char			*cursor;
@@ -40,6 +41,7 @@ static struct process {
 	.journal[0].cursor_len	= 0,
 	.journal[0].fds[0].fd	= -1,
 	.journal[0].fds[1].fd	= -1,
+	.journal[0].fds[2].fd	= -1,
 	.journal[0].nfds	= sizeof(process.journal[0].fds)/sizeof(struct pollfd),
 	.unit			= NULL,
 	.cursor_file		= NULL,
@@ -204,7 +206,7 @@ err:
 	return -1;
 }
 
-static int init_signal(struct process *p)
+static int init_signal(const struct process *restrict p)
 {
 	sigset_t mask;
 	int ret;
@@ -224,6 +226,24 @@ static int init_signal(struct process *p)
 		perror("sigaddset(SIGINT)");
 		return -1;
 	}
+	ret = sigprocmask(SIG_BLOCK, &mask, NULL);
+	if (ret == -1) {
+		perror("sigprocmask");
+		return -1;
+	}
+	return signalfd(-1, &mask, SFD_CLOEXEC);
+}
+
+static int init_restart(const struct process *restrict p)
+{
+	sigset_t mask;
+	int ret;
+
+	ret = sigemptyset(&mask);
+	if (ret == -1) {
+		perror("sigemptyset");
+		return -1;
+	}
 	ret = sigaddset(&mask, SIGHUP);
 	if (ret == -1) {
 		perror("sigaddset(SIGHUP)");
@@ -234,7 +254,7 @@ static int init_signal(struct process *p)
 		perror("sigaddset(SIGABRT)");
 		return -1;
 	}
-	ret = sigprocmask(SIG_SETMASK, &mask, NULL);
+	ret = sigprocmask(SIG_BLOCK, &mask, NULL);
 	if (ret == -1) {
 		perror("sigprocmask");
 		return -1;
@@ -242,7 +262,7 @@ static int init_signal(struct process *p)
 	return signalfd(-1, &mask, SFD_CLOEXEC);
 }
 
-static int init_timer(struct process *p)
+static int init_timer(const struct process *restrict p)
 {
 	const struct itimerspec ts = {
 		.it_interval.tv_sec	= 0,
@@ -281,11 +301,16 @@ static int init(struct process *p)
 		goto err;
 	ctx->fds[0].fd		= fd;
 	ctx->fds[0].events	= POLLIN;
-	fd = init_timer(p);
+	fd = init_restart(p);
 	if (fd == -1)
 		goto err;
 	ctx->fds[1].fd		= fd;
 	ctx->fds[1].events	= POLLIN;
+	fd = init_timer(p);
+	if (fd == -1)
+		goto err;
+	ctx->fds[2].fd		= fd;
+	ctx->fds[2].events	= POLLIN;
 	ctx->p = p;
 	return 0;
 err:
@@ -332,11 +357,13 @@ static int fetch(struct context *ctx)
 		return -1;
 	} else if (ret == 0)
 		return 0;
-	/* timed out */
 	term(p);
-	if (ctx->fds[1].revents&POLLIN) {
+	if (ctx->fds[1].revents&POLLIN)
+		/* restart */
 		exit(EXIT_SUCCESS);
-	}
+	if (ctx->fds[2].revents&POLLIN)
+		/* timed out */
+		exit(EXIT_SUCCESS);
 	/* abnormal termination... */
 	exit(EXIT_FAILURE);
 }
@@ -371,10 +398,20 @@ static int exec(struct context *ctx)
 			continue;
 		printf("%*s\n", (int)(len-flen), data+flen);
 	}
-	ret = fflush(stdout);
-	if (ret == -1) {
-		perror("fflush");
-		return -1;
+	if (i) {
+		/* flush the buffer when there is an output */
+		ret = fflush(stdout);
+		if (ret == -1) {
+			perror("fflush");
+			return -1;
+		}
+		/* and let the systemd know we processed logs */
+		ret = sd_notify(0, "WATCHDOG=1");
+		if (ret < 0) {
+			errno = ret;
+			perror("sd_notify");
+			return -1;
+		}
 	}
 	ret = sd_journal_get_cursor(ctx->jd, &cursor);
 	if (ret < 0) {
