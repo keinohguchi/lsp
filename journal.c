@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <poll.h>
 #include <sched.h>
+#include <time.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <sys/timerfd.h>
@@ -258,8 +259,10 @@ static int print_standard(struct context *ctx)
 static int print_structured(struct context *ctx)
 {
 	const struct process *const p = ctx->p;
+	char tbuf[LINE_MAX];
 	const char *data;
 	uint64_t usec;
+	time_t sec;
 	size_t len;
 	int ret;
 
@@ -275,9 +278,10 @@ static int print_structured(struct context *ctx)
 		perror("sd_journal_get_realtime_usec");
 		return -1;
 	}
+	sec = usec/1000000;
+	len = strftime(tbuf, sizeof(tbuf), "%Y-%m-%dT%T", gmtime(&sec));
 	return sd_journal_send(data, "SYSLOG_IDENTIFIER=%s", p->identifier,
-			       "SOURCE_REALTIME_TIMESTAMP=%lld", usec,
-			       NULL);
+			       "timestamp=%s", tbuf, NULL);
 }
 
 static int init_output(struct process *p)
