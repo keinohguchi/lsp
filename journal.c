@@ -9,6 +9,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <poll.h>
+#include <sched.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <sys/timerfd.h>
@@ -46,7 +47,7 @@ static struct process {
 	.unit			= NULL,
 	.cursor_file		= NULL,
 	.max_entry		= 0,
-	.interval		= 0,
+	.interval		= 1000, /* ms */
 	.timeout		= 0,
 	.progname		= NULL,
 	.opts			= "u:f:m:i:t:h",
@@ -79,7 +80,8 @@ static void usage(const struct process *restrict p, FILE *s, int status)
 			fprintf(s, "\t\tMaximum query entry limit for each invocation (default: none)\n");
 			break;
 		case 'i':
-			fprintf(s, "\t\tInterval in millisecond (default: none)\n");
+			fprintf(s, "\t\tInterval in millisecond (default: %d)\n",
+				p->interval);
 			break;
 		case 't':
 			fprintf(s, "\t\tTimeout in millisecond (default: none)\n");
@@ -397,6 +399,10 @@ static int exec(struct context *ctx)
 		if (len <= flen)
 			continue;
 		printf("%*s\n", (int)(len-flen), data+flen);
+		if (sched_yield() == -1) {
+			perror("sched_yield");
+			break;
+		}
 	}
 	if (i) {
 		/* flush the buffer when there is an output */
