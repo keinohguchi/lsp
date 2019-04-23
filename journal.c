@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <syslog.h>
 #include <unistd.h>
 #include <poll.h>
 #include <sched.h>
@@ -23,6 +24,7 @@ struct context {
 	int			nfds;
 	sd_journal		*jd;
 	char			*cursor;
+	FILE			*output;
 	size_t			cursor_len;
 };
 
@@ -33,6 +35,9 @@ static struct process {
 	int			max_entry;
 	int			interval;
 	int			timeout;
+	const char		*output;
+	const char		*identifier;
+	int			priority;
 	const char		*progname;
 	const char		*const opts;
 	const struct option	lopts[];
@@ -49,14 +54,20 @@ static struct process {
 	.max_entry		= 0,
 	.interval		= 1000, /* ms */
 	.timeout		= 0,
+	.output			= "stdout",
+	.identifier		= "journal",
+	.priority		= LOG_INFO,
 	.progname		= NULL,
-	.opts			= "u:f:m:i:t:h",
+	.opts			= "u:f:m:i:t:o:I:p:h",
 	.lopts			= {
 		{"unit",	required_argument,	NULL,	'u'},
 		{"cursor_file",	required_argument,	NULL,	'f'},
 		{"max_entry",	required_argument,	NULL,	'm'},
 		{"interval",	required_argument,	NULL,	'i'},
 		{"timeout",	required_argument,	NULL,	't'},
+		{"output",	required_argument,	NULL,	'o'},
+		{"identifier",	required_argument,	NULL,	'I'},
+		{"priority",	required_argument,	NULL,	'p'},
 		{"help",	no_argument,		NULL,	'h'},
 		{NULL, 0, NULL, 0},
 	},
@@ -85,6 +96,18 @@ static void usage(const struct process *restrict p, FILE *s, int status)
 			break;
 		case 't':
 			fprintf(s, "\t\tTimeout in millisecond (default: none)\n");
+			break;
+		case 'o':
+			fprintf(s, "\t\tDestination of the log [stdout|stderr|stream] (default: %s)\n",
+				p->output);
+			break;
+		case 'I':
+			fprintf(s, "\t\tLog identifier for stream output (default: %s)\n",
+				p->identifier);
+			break;
+		case 'p':
+			fprintf(s, "\t\tLog priority lovel for stream output [%d-%d] (default: %d)\n",
+				LOG_EMERG, LOG_DEBUG, p->priority);
 			break;
 		case 'h':
 			fprintf(s, "\t\tDisplay this message and exit\n");
@@ -208,6 +231,42 @@ err:
 	return -1;
 }
 
+static int init_output(struct process *p)
+{
+	struct context *ctx = p->journal;
+	FILE *fp;
+	int fd;
+
+	if (!strcmp(p->output, "stdout")) {
+		ctx->output = stdout;
+		return 0;
+	}
+	if (!strcmp(p->output, "stderr")) {
+		ctx->output = stderr;
+		return 0;
+	}
+	if (strcmp(p->output, "stream"))
+		return -1;
+	fd = sd_journal_stream_fd(p->identifier, p->priority, 0);
+	if (fd < 0) {
+		errno = -fd;
+		perror("sd_journal_stream_fd");
+		return -1;
+	}
+	/* map the journal stream to stdout */
+	if (dup2(fd, STDOUT_FILENO) == -1) {
+		perror("dup2");
+		return -1;
+	}
+	fp = fdopen(fd, "w");
+	if (fp == NULL) {
+		perror("fdopen");
+		return -1;
+	}
+	ctx->output = fp;
+	return 0;
+}
+
 static int init_signal(const struct process *restrict p)
 {
 	sigset_t mask;
@@ -298,6 +357,9 @@ static int init(struct process *p)
 	ret = init_journal(p);
 	if (ret == -1)
 		goto err;
+	ret = init_output(p);
+	if (ret == -1)
+		goto err;
 	fd = init_signal(p);
 	if (fd == -1)
 		goto err;
@@ -343,6 +405,9 @@ static void term(const struct process *restrict p)
 		if (ctx->fds[i].fd != -1)
 			if (close(ctx->fds[i].fd))
 				perror("close");
+	if (ctx->output != stdout && ctx->output != stderr)
+		if (fclose(ctx->output))
+			perror("fclose");
 	if (ctx->jd)
 		sd_journal_close(ctx->jd);
 	sigterm(p);
@@ -398,7 +463,7 @@ static int exec(struct context *ctx)
 		/* Strip the field prefix */
 		if (len <= flen)
 			continue;
-		printf("%*s\n", (int)(len-flen), data+flen);
+		fprintf(ctx->output, "%*s\n", (int)(len-flen), data+flen);
 		/* avoid the busy loop */
 		if (sched_yield() == -1) {
 			perror("sched_yield");
@@ -407,7 +472,7 @@ static int exec(struct context *ctx)
 	}
 	if (i) {
 		/* flush the buffer when there is an output */
-		ret = fflush(stdout);
+		ret = fflush(ctx->output);
 		if (ret == -1) {
 			perror("fflush");
 			return -1;
@@ -473,6 +538,27 @@ int main(int argc, char *const argv[])
 			if (val < 0 || val > INT_MAX)
 				usage(p, stderr, EXIT_FAILURE);
 			p->timeout = val;
+			break;
+		case 'o':
+			if (!strncmp(optarg, "stdo", 4))
+				p->output = "stdout";
+			else if (!strncmp(optarg, "stde", 4))
+				p->output = "stderr";
+			else if (!strncmp(optarg, "str", 3))
+				p->output = "stream";
+			else
+				usage(p, stderr, EXIT_FAILURE);
+			break;
+		case 'I':
+			p->identifier = strdup(optarg);
+			if (p->identifier == NULL)
+				usage(p, stderr, EXIT_FAILURE);
+			break;
+		case 'p':
+			val = strtol(optarg, NULL, 10);
+			if (val < LOG_EMERG || val > LOG_DEBUG)
+				usage(p, stderr, EXIT_FAILURE);
+			p->priority = val;
 			break;
 		case 'h':
 			usage(p, stdout, EXIT_SUCCESS);

@@ -50,6 +50,81 @@ int main(void)
 			.argv	= {target, "-u", "systemd-journald", "-m", "0", "-t", "1", NULL},
 			.want	= 0,
 		},
+		{
+			.name	= "stdout destination",
+			.argv	= {target, "-o", "stdout", "-t", "1", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "stderr destination",
+			.argv	= {target, "-o", "stderr", "-t", "1", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "stream destination",
+			.argv	= {target, "-o", "stream", "-t", "1", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "wrong destination",
+			.argv	= {target, "-o", "wrong", "-t", "1", NULL},
+			.want	= 1,
+		},
+		{
+			.name	= "stream logging identifier",
+			.argv	= {target, "-o", "stream", "-I", "test", "-t", "1", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "stream logging emergency priority",
+			.argv	= {target, "-o", "stream", "-p", "0", "-t", "1", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "stream logging alert priority",
+			.argv	= {target, "-o", "stream", "-p", "1", "-t", "1", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "stream logging critical priority",
+			.argv	= {target, "-o", "stream", "-p", "2", "-t", "1", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "stream logging error priority",
+			.argv	= {target, "-o", "stream", "-p", "3", "-t", "1", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "stream logging warning priority",
+			.argv	= {target, "-o", "stream", "-p", "4", "-t", "1", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "stream logging notice priority",
+			.argv	= {target, "-o", "stream", "-p", "5", "-t", "1", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "stream logging info priority",
+			.argv	= {target, "-o", "stream", "-p", "6", "-t", "1", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "stream logging debug priority",
+			.argv	= {target, "-o", "stream", "-p", "7", "-t", "1", NULL},
+			.want	= 0,
+		},
+		{
+			.name	= "stream logging wrong priority",
+			.argv	= {target, "-o", "stream", "-p", "8", "-t", "1", NULL},
+			.want	= 1,
+		},
+		{
+			.name	= "stream logging negative priority",
+			.argv	= {target, "-o", "stream", "-p", "-1", "-t", "1", NULL},
+			.want	= 1,
+		},
 		{.name = NULL}, /* sentry */
 	};
 	int ret = -1;
