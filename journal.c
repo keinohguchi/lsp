@@ -9,7 +9,6 @@
 #include <signal.h>
 #include <unistd.h>
 #include <poll.h>
-#include <sched.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <sys/timerfd.h>
@@ -370,6 +369,11 @@ static int fetch(struct context *ctx)
 	exit(EXIT_FAILURE);
 }
 
+static int msleep(int msec)
+{
+	return poll(NULL, 0, msec);
+}
+
 static int exec(struct context *ctx)
 {
 	const struct process *const p = ctx->p;
@@ -399,8 +403,9 @@ static int exec(struct context *ctx)
 		if (len <= flen)
 			continue;
 		printf("%*s\n", (int)(len-flen), data+flen);
-		if (sched_yield() == -1) {
-			perror("sched_yield");
+		/* one message in 1msec */
+		if (msleep(1) == -1) {
+			perror("msleep");
 			break;
 		}
 	}
