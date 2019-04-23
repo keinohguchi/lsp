@@ -16,6 +16,7 @@
 #include <sys/timerfd.h>
 #include <sys/signalfd.h>
 #include <systemd/sd-daemon.h>
+#define SD_JOURNAL_SUPPRESS_LOCATION
 #include <systemd/sd-journal.h>
 
 struct context {
@@ -267,7 +268,7 @@ static int print_structured(struct context *ctx)
 		perror("sd_journal_get_data");
 		return -1;
 	}
-	return sd_journal_send(data, "msg=this is the additional message", NULL);
+	return sd_journal_send(data, "SYSLOG_IDENTIFIER=%s", p->identifier, NULL);
 }
 
 static int init_output(struct process *p)
