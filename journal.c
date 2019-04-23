@@ -35,9 +35,11 @@ static struct process {
 	int			max_entry;
 	int			interval;
 	int			timeout;
+	const char		*field;
 	const char		*output;
 	const char		*identifier;
 	int			priority;
+	int			(*print)(struct context *ctx);
 	const char		*progname;
 	const char		*const opts;
 	const struct option	lopts[];
@@ -54,6 +56,7 @@ static struct process {
 	.max_entry		= 0,
 	.interval		= 1000, /* ms */
 	.timeout		= 0,
+	.field			= "MESSAGE",
 	.output			= "stdout",
 	.identifier		= "journal",
 	.priority		= LOG_INFO,
@@ -231,6 +234,42 @@ err:
 	return -1;
 }
 
+static int print_standard(struct context *ctx)
+{
+	const struct process *const p = ctx->p;
+	size_t flen = strlen(p->field)+1; /* include trailing '=' */
+	const char *data;
+	size_t len;
+	int ret;
+
+	ret = sd_journal_get_data(ctx->jd, p->field, (const void **)&data, &len);
+	if (ret < 0) {
+		errno = -ret;
+		perror("sd_journal_get_data");
+		return -1;
+	}
+	/* Strip the field prefix */
+	if (len <= flen)
+		return 0;
+	return fprintf(ctx->output, "%*s\n", (int)(len-flen), data+flen);
+}
+
+static int print_structured(struct context *ctx)
+{
+	const struct process *const p = ctx->p;
+	const char *data;
+	size_t len;
+	int ret;
+
+	ret = sd_journal_get_data(ctx->jd, p->field, (const void **)&data, &len);
+	if (ret < 0) {
+		errno = -ret;
+		perror("sd_journal_get_data");
+		return -1;
+	}
+	return sd_journal_send(data, "msg=this is the additional message", NULL);
+}
+
 static int init_output(struct process *p)
 {
 	struct context *ctx = p->journal;
@@ -238,10 +277,12 @@ static int init_output(struct process *p)
 	int fd;
 
 	if (!strcmp(p->output, "stdout")) {
+		p->print = print_standard;
 		ctx->output = stdout;
 		return 0;
 	}
 	if (!strcmp(p->output, "stderr")) {
+		p->print = print_standard;
 		ctx->output = stderr;
 		return 0;
 	}
@@ -263,6 +304,7 @@ static int init_output(struct process *p)
 		perror("fdopen");
 		return -1;
 	}
+	p->print = print_structured;
 	ctx->output = fp;
 	return 0;
 }
@@ -438,11 +480,7 @@ static int fetch(struct context *ctx)
 static int exec(struct context *ctx)
 {
 	const struct process *const p = ctx->p;
-	const char *field = "MESSAGE";
-	size_t flen = strlen(field)+1; /* include trailing '=' */
-	const char *data;
 	char *cursor;
-	size_t len;
 	int i, ret;
 
 	for (i = 0; p->max_entry == 0 || i < p->max_entry; i++) {
@@ -454,16 +492,8 @@ static int exec(struct context *ctx)
 			perror("sd_journal_next");
 			break;
 		}
-		ret = sd_journal_get_data(ctx->jd, field, (const void **)&data, &len);
-		if (ret < 0) {
-			errno = -ret;
-			perror("sd_journal_get_data");
+		if ((*p->print)(ctx) == -1)
 			break;
-		}
-		/* Strip the field prefix */
-		if (len <= flen)
-			continue;
-		fprintf(ctx->output, "%*s\n", (int)(len-flen), data+flen);
 		/* avoid the busy loop */
 		if (sched_yield() == -1) {
 			perror("sched_yield");
