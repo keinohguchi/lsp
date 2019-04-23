@@ -259,6 +259,7 @@ static int print_structured(struct context *ctx)
 {
 	const struct process *const p = ctx->p;
 	const char *data;
+	uint64_t usec;
 	size_t len;
 	int ret;
 
@@ -268,7 +269,15 @@ static int print_structured(struct context *ctx)
 		perror("sd_journal_get_data");
 		return -1;
 	}
-	return sd_journal_send(data, "SYSLOG_IDENTIFIER=%s", p->identifier, NULL);
+	ret = sd_journal_get_realtime_usec(ctx->jd, &usec);
+	if (ret < 0) {
+		errno = -ret;
+		perror("sd_journal_get_realtime_usec");
+		return -1;
+	}
+	return sd_journal_send(data, "SYSLOG_IDENTIFIER=%s", p->identifier,
+			       "SOURCE_REALTIME_TIMESTAMP=%lld", usec,
+			       NULL);
 }
 
 static int init_output(struct process *p)
