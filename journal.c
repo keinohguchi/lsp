@@ -247,7 +247,7 @@ static int init_output(struct process *p)
 	}
 	if (strcmp(p->output, "stream"))
 		return -1;
-	fd = sd_journal_stream_fd(p->identifier, p->priority, 0);
+	fd = sd_journal_stream_fd(p->identifier, p->priority, 1);
 	if (fd < 0) {
 		errno = -fd;
 		perror("sd_journal_stream_fd");
