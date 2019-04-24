@@ -278,10 +278,23 @@ static int print_structured(struct context *ctx)
 		perror("sd_journal_get_realtime_usec");
 		return -1;
 	}
+	/* YYYY-MM-DDTHH:MM:SS */
 	sec = usec/1000000;
 	len = strftime(tbuf, sizeof(tbuf), "%Y-%m-%dT%T", gmtime(&sec));
+	if (len <= 0) {
+		perror("strftime");
+		return -1;
+	}
+	/* msec */
+	len = snprintf(&tbuf[len], sizeof(tbuf)-len, ".%03ldZ", usec%1000000/1000);
+	if (len < 0) {
+		perror("snprintf");
+		return -1;
+	}
+	/* place timestamp both timestamp as well as time, as timestamp
+	 * might be overridden by the journald itself */
 	return sd_journal_send(data, "SYSLOG_IDENTIFIER=%s", p->identifier,
-			       "timestamp=%s", tbuf, NULL);
+			       "SYSLOG_TIMESTAMP=%s", tbuf, NULL);
 }
 
 static int init_output(struct process *p)
