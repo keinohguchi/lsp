@@ -32,10 +32,11 @@ PROGS += journal
 OBJS  := $(patsubst %,%.o,$(PROGS))
 LIB   := liblsp.a
 #LIB  := liblsp.so
-LIB_SRCS  := ls.c
-LIB_OBJS  := $(patsubst %.c,%.o,$(LIB_SRCS))
-TEST_SRCS := $(filter %_test.c,$(wildcard *.c))
-TESTS     ?= $(patsubst %.c,%,$(TEST_SRCS))
+LIB_SRCS    := ls.c
+LIB_OBJS    := $(patsubst %.c,%.o,$(LIB_SRCS))
+TESTS_SRC   := $(filter %_test.c,$(wildcard *.c))
+TESTS       ?= $(patsubst %.c,%,$(TESTS_SRC))
+TESTS_GOSRC := $(filter %_test.go,$(wildcard *.go))
 # Tests not ready on qemu/arm64 environment
 TESTS_EXC := daemon_test
 TESTS_EXC += thread_test
@@ -56,7 +57,7 @@ CFLAGS  += -D_GNU_SOURCE
 CFLAGS  += -fpic
 LDFLAGS += -lpthread
 LDFLAGS += -lrt
-.PHONY: all help test check clean $(TESTS)
+.PHONY: all help test check clean $(TESTS) $(TESTS_GOSRC)
 all: $(PROGS)
 $(filter-out ls sh journal,$(PROGS)):
 	$(CC) $(CFLAGS) -o $@ $@.c $(LDFLAGS)
@@ -71,8 +72,8 @@ $(LIB): $(LIB_OBJS)
 	#$(CC) $(CFLAGS) -shared -o $@ $^
 help: $(PROGS)
 	@for i in $^; do if ! ./$$i --$@; then exit 1; fi; done
-test check: $(PROGS) $(TESTS)
-$(TESTS): $(PROGS) $(TEST_SRCS)
+test check: $(TESTS) $(TESTS_GOSRC)
+$(TESTS): $(PROGS) $(TESTS_SRC)
 	@$(CC) $(CFLAGS) -o $@ $@.c
 	@printf "$@:\t"
 	@log=$(shell mktemp .$@-XXXXXXX.log); \
@@ -81,6 +82,8 @@ $(TESTS): $(PROGS) $(TEST_SRCS)
 	else                                  \
 		echo FAIL; cat $$log; exit 1; \
 	fi
+$(TESTS_GOSRC):
+	@go test -v $@
 clean:
 	@-$(RM) $(OBJS) $(LIB) $(LIB_OBJS) $(PROGS) $(TESTS) *.o .*.log
 %: %.c

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0
 FROM arm64v8/ubuntu:16.04
 COPY qemu-aarch64-static /usr/bin
-RUN apt update && apt install -y gcc make libsystemd-dev
+RUN apt update && apt install -y gcc go make libsystemd-dev
 WORKDIR /home/build
 CMD ["make"]
