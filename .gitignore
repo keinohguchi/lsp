@@ -3,6 +3,8 @@ a.out
 *.o
 *.log
 *.~
+go.sum
+go/
 qemu-*
 cscope.*
 liblsp.*
