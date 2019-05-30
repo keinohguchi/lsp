@@ -90,4 +90,6 @@ jobs:
           command: |
             sudo apt update;
             sudo apt install -y qemu qemu-user-static qemu-user binfmt-support
-      - run: make test-arm64
+      # No go binary on the user mode Qemu for arm.
+      # https://github.com/golang/go/issues/13024#issuecomment-164894790
+      - run: make c-test-arm64

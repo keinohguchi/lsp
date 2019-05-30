@@ -72,7 +72,9 @@ $(LIB): $(LIB_OBJS)
 	#$(CC) $(CFLAGS) -shared -o $@ $^
 help: $(PROGS)
 	@for i in $^; do if ! ./$$i --$@; then exit 1; fi; done
-test check: $(TESTS) $(TESTS_GOSRC)
+.PHONY: test $(TESTS) $(TESTS_GOSRC)
+test: c-test go-test
+c-test: $(TESTS)
 $(TESTS): $(PROGS) $(TESTS_SRC)
 	@$(CC) $(CFLAGS) -o $@ $@.c
 	@printf "$@:\t"
@@ -82,6 +84,7 @@ $(TESTS): $(PROGS) $(TESTS_SRC)
 	else                                  \
 		echo FAIL; cat $$log; exit 1; \
 	fi
+go-test: $(TESTS_GOSRC)
 $(TESTS_GOSRC):
 	@go test -v $@
 clean:
