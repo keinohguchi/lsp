@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0
 FROM archlinux/base
-RUN pacman -Sy --noconfirm gcc make go binutils systemd-libs
+RUN pacman -Sy --noconfirm binutils gcc go git make systemd-libs
 WORKDIR /home/build
 CMD ["make"]

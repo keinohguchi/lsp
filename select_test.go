@@ -22,7 +22,7 @@ func TestSelect(t *testing.T) {
 			name: "read select on stdin",
 			nfds: unix.Stdin + 1,
 			rfds: &unix.FdSet{
-				Bits: [16]int64{1 << unix.Stdin},
+				Bits: [16]int64{1 << uint(unix.Stdin)},
 			},
 			want: 1,
 		},
@@ -30,7 +30,7 @@ func TestSelect(t *testing.T) {
 			name: "write select on stdout",
 			nfds: unix.Stdout + 1,
 			wfds: &unix.FdSet{
-				Bits: [16]int64{1 << unix.Stdout},
+				Bits: [16]int64{1 << uint(unix.Stdout)},
 			},
 			want: 1,
 		},
@@ -38,10 +38,10 @@ func TestSelect(t *testing.T) {
 			name: "read/write select on stdin and stdout",
 			nfds: unix.Stdout + 1,
 			rfds: &unix.FdSet{
-				Bits: [16]int64{1 << unix.Stdin},
+				Bits: [16]int64{1 << uint(unix.Stdin)},
 			},
 			wfds: &unix.FdSet{
-				Bits: [16]int64{1 << unix.Stdout},
+				Bits: [16]int64{1 << uint(unix.Stdout)},
 			},
 			want: 2,
 		},
