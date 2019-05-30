@@ -88,7 +88,7 @@ go-test: $(TESTS_GOSRC)
 $(TESTS_GOSRC):
 	@go test -v $@
 clean:
-	@-$(RM) $(OBJS) $(LIB) $(LIB_OBJS) $(PROGS) $(TESTS) *.o .*.log
+	@-$(RM) $(OBJS) $(LIB) $(LIB_OBJS) $(PROGS) $(TESTS) go.sum *.o .*.log
 %: %.c
 	$(CC) $(CFLAGS) -o $@ $<
 # Cross compilations through the docker container.
